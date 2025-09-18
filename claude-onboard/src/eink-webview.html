@@ -1,0 +1,442 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>E‑ink Wallpaper Designer</title>
+<style>
+:root{--fg:var(--vscode-foreground);--muted:var(--vscode-descriptionForeground);--bg:var(--vscode-editor-background);--border:var(--vscode-widget-border);--btn-bg:var(--vscode-button-secondaryBackground);--btn-fg:var(--vscode-button-secondaryForeground);--primary-bg:var(--vscode-button-background);--primary-fg:var(--vscode-button-foreground)}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--vscode-font-family);color:var(--fg);background:var(--bg)}
+.wrap{padding:20px;max-width:1200px;margin:0 auto}
+h2{margin:0 0 16px;font-size:18px}
+h3{margin:0 0 12px;font-size:14px;opacity:.9}
+
+/* Steps */
+.steps{display:flex;gap:16px;margin-bottom:20px}
+.step{flex:1;padding:12px;border:1px solid var(--border);border-radius:6px;text-align:center;opacity:0.6}
+.step.active{opacity:1;border-color:#3ea6ff}
+.step-num{display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;background:var(--border);margin-right:8px}
+.step.active .step-num{background:#3ea6ff;color:var(--bg)}
+
+/* Cards */
+.card{border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;background:var(--bg)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+
+/* Controls */
+button{padding:6px 12px;border-radius:4px;border:1px solid var(--border);background:var(--btn-bg);color:var(--btn-fg);cursor:pointer;font-size:13px}
+button:hover:not(:disabled){opacity:0.85}
+button.primary{background:var(--primary-bg);color:var(--primary-fg)}
+button:disabled{opacity:0.5;cursor:not-allowed}
+select,input[type="number"]{padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--vscode-input-background);color:var(--vscode-input-foreground);font-size:13px}
+input[type="file"]{display:none}
+.file-label{display:inline-block;padding:8px 16px;border:2px dashed var(--border);border-radius:6px;cursor:pointer;text-align:center}
+.file-label:hover{border-color:#3ea6ff}
+label{font-size:13px;opacity:.9}
+.small{font-size:12px;color:var(--muted)}
+
+/* Image editor */
+.editor-grid{display:grid;grid-template-columns:1fr 300px;gap:20px}
+.canvasWrap{position:relative;display:inline-block;border:1px solid var(--border);background:#fff}
+#source{display:block;max-width:100%;height:auto}
+#cropBox{position:absolute;border:2px solid #3ea6ff;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;touch-action:none}
+.handle{position:absolute;width:12px;height:12px;background:#3ea6ff;border:2px solid white;border-radius:2px}
+.handle.br{right:-7px;bottom:-7px;cursor:nwse-resize}
+
+/* Preview */
+.preview-wrap{text-align:center}
+.preview{display:inline-block;border:1px solid var(--border);padding:8px;border-radius:6px;background:#fff;position:relative}
+.preview canvas{display:block;image-rendering:pixelated}
+
+/* Controls grid */
+.controls{display:grid;gap:12px}
+.control-group{display:flex;flex-direction:column;gap:4px}
+.control-group input[type="range"]{width:100%}
+.value{font-weight:600}
+
+/* Overlay editor */
+.overlay-list{max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:8px;margin-bottom:12px}
+.overlay-item{display:flex;align-items:center;gap:8px;padding:6px;border-radius:4px;margin-bottom:4px;background:var(--vscode-editor-background)}
+.overlay-item:hover{background:var(--vscode-list-hoverBackground)}
+.overlay-type{font-weight:600;width:30px}
+.overlay-coords{flex:1;font-size:12px}
+.overlay-preview{position:relative;border:1px solid var(--border);background:#fff;margin-top:12px}
+.overlay-element{position:absolute;cursor:move;user-select:none}
+.overlay-element.ip{background:rgba(255,255,255,0.9);color:#000;padding:2px 4px;font-size:8px;font-family:monospace;border:1px solid transparent}
+.overlay-element.qr{background:white;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-size:8px}
+.overlay-element:hover{border-color:#3ea6ff !important}
+.overlay-element.dragging{opacity:0.7;border-color:#3ea6ff !important;z-index:1000}
+
+/* Status */
+.status{padding:8px 12px;border-radius:4px;background:var(--vscode-editorInfo-background);color:var(--vscode-editorInfo-foreground);margin-top:12px;font-size:12px}
+.status.error{background:var(--vscode-editorError-background);color:var(--vscode-editorError-foreground)}
+.status.success{background:var(--vscode-testing-passForeground);color:var(--bg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>E‑ink Wallpaper Designer</h2>
+
+<div class="steps">
+  <div class="step active" id="step1">
+    <span class="step-num">1</span>Image Processing
+  </div>
+  <div class="step" id="step2">
+    <span class="step-num">2</span>Add Overlays
+  </div>
+</div>
+
+<!-- Step 1: Image Processing -->
+<div id="step1Content" class="card">
+  <h3>Step 1: Process Image</h3>
+  
+  <div class="row">
+    <label for="fileInput" class="file-label">
+      📁 Choose Image File
+    </label>
+    <input type="file" id="fileInput" accept="image/*">
+    <span class="small" id="fileName"></span>
+  </div>
+
+  <div class="editor-grid" id="editorGrid" style="display:none">
+    <div>
+      <div class="canvasWrap">
+        <img id="source" alt="source"/>
+        <div id="cropBox" style="display:none">
+          <div class="handle br"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div>
+      <div class="controls">
+        <div class="control-group">
+          <label>Brightness: <span class="value" id="brightVal">0</span></label>
+          <input type="range" id="bright" min="-100" max="100" value="0">
+        </div>
+        
+        <div class="control-group">
+          <label>Contrast: <span class="value" id="contrastVal">0</span></label>
+          <input type="range" id="contrast" min="-100" max="100" value="0">
+        </div>
+        
+        <div class="control-group">
+          <label>Dither Mode</label>
+          <select id="ditherMode">
+            <option value="floyd-steinberg">Floyd-Steinberg</option>
+            <option value="bayer">Bayer</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        
+        <button id="resetImage">Reset Settings</button>
+      </div>
+      
+      <div class="preview-wrap" style="margin-top:16px">
+        <div class="small">Live Preview (250×128)</div>
+        <div class="preview">
+          <canvas id="preview" width="250" height="128"></canvas>
+        </div>
+      </div>
+      
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="nextStep">Next: Add Overlays →</button>
+      </div>
+    </div>
+  </div>
+  
+</div>
+
+<!-- Step 2: Overlays -->
+<div id="step2Content" class="card" style="display:none">
+  <h3>Step 2: Add Overlays</h3>
+  
+  <div class="row">
+    <button id="addIP">+ Add IP Address</button>
+    <button id="addQR">+ Add QR Code</button>
+    <button id="clearOverlays">Clear All</button>
+  </div>
+  
+  <div class="overlay-list" id="overlayList">
+    <div class="small">No overlays added. Add an IP address to continue.</div>
+  </div>
+  
+  <div class="overlay-preview" style="position:relative;width:500px;height:256px;overflow:hidden">
+    <canvas id="overlayCanvas" width="250" height="128" style="width:500px;height:256px;image-rendering:pixelated;position:absolute;top:0;left:0"></canvas>
+    <div id="overlayElements" style="position:absolute;top:0;left:0;width:500px;height:256px"></div>
+  </div>
+  
+  <div class="row" style="margin-top:16px">
+    <button id="backStep">← Back to Image</button>
+    <button class="primary" id="displayBtn" disabled title="Add an IP Address overlay to enable">Display on E‑ink</button>
+    <button id="saveBtn" disabled>Save Template</button>
+  </div>
+  
+  <div id="status"></div>
+</div>
+
+</div>
+
+<script>
+const vscode = typeof acquireVsCodeApi !== 'undefined' ? acquireVsCodeApi() : null;
+
+const fileInput = document.getElementById('fileInput');
+const fileName = document.getElementById('fileName');
+const source = document.getElementById('source');
+const cropBox = document.getElementById('cropBox');
+const preview = document.getElementById('preview');
+const pctx = preview.getContext('2d');
+const bright = document.getElementById('bright');
+const brightVal = document.getElementById('brightVal');
+const contrast = document.getElementById('contrast');
+const contrastVal = document.getElementById('contrastVal');
+const ditherMode = document.getElementById('ditherMode');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const octx = overlayCanvas.getContext('2d');
+
+let imgLoaded = false;
+let imgW = 0, imgH = 0;
+let crop = { x: 0, y: 0, w: 250, h: 128 };
+let processedImage = null;
+let overlays = { elements: [] };
+let nextId = 1;
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  fileName.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    source.onload = () => {
+      imgLoaded = true;
+      imgW = source.naturalWidth;
+      imgH = source.naturalHeight;
+      const ratio = 250/128;
+      const w = Math.min(imgW, imgH * ratio);
+      const h = w / ratio;
+      crop = { x: (imgW - w) / 2, y: (imgH - h) / 2, w, h };
+      requestAnimationFrame(() => {
+        setCropBox();
+        requestAnimationFrame(() => { setCropBox(); cropBox.style.display = 'block'; });
+      });
+      processImage();
+      document.getElementById('editorGrid').style.display = 'grid';
+    };
+    source.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function setCropBox() {
+  if (!imgLoaded) return;
+  const r = source.getBoundingClientRect();
+  const scaleX = r.width / imgW;
+  const scaleY = r.height / imgH;
+  cropBox.style.display = 'block';
+  cropBox.style.left = (crop.x * scaleX) + 'px';
+  cropBox.style.top = (crop.y * scaleY) + 'px';
+  cropBox.style.width = (crop.w * scaleX) + 'px';
+  cropBox.style.height = (crop.h * scaleY) + 'px';
+}
+
+let dragging = false, resizing = false;
+let dragStart = { x: 0, y: 0 };
+let cropStart = { x: 0, y: 0, w: 0, h: 0 };
+
+cropBox.addEventListener('pointerdown', (e) => {
+  if (e.target.classList.contains('handle')) { resizing = true; } else { dragging = true; }
+  dragStart = { x: e.clientX, y: e.clientY };
+  cropStart = { ...crop };
+  cropBox.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+cropBox.addEventListener('pointermove', (e) => {
+  if (!dragging && !resizing) return;
+  const r = source.getBoundingClientRect();
+  const scaleX = imgW / r.width;
+  const scaleY = imgH / r.height;
+  const dx = (e.clientX - dragStart.x) * scaleX;
+  const dy = (e.clientY - dragStart.y) * scaleY;
+  if (dragging) {
+    crop.x = Math.max(0, Math.min(imgW - crop.w, cropStart.x + dx));
+    crop.y = Math.max(0, Math.min(imgH - crop.h, cropStart.y + dy));
+  } else {
+    const newW = Math.max(50, cropStart.w + dx);
+    crop.w = Math.min(newW, imgW - cropStart.x);
+    crop.h = crop.w / (250/128);
+    if (crop.h > imgH - cropStart.y) { crop.h = imgH - cropStart.y; crop.w = crop.h * (250/128); }
+  }
+  setCropBox();
+  processImage();
+});
+
+cropBox.addEventListener('pointerup', () => { dragging = resizing = false; });
+
+bright.addEventListener('input', () => { brightVal.textContent = bright.value; processImage(); });
+contrast.addEventListener('input', () => { contrastVal.textContent = contrast.value; processImage(); });
+ditherMode.addEventListener('change', processImage);
+
+document.getElementById('resetImage').addEventListener('click', () => {
+  bright.value = 0; contrast.value = 0; brightVal.textContent = '0'; contrastVal.textContent = '0'; ditherMode.value = 'floyd-steinberg'; processImage();
+});
+
+function processImage() {
+  if (!imgLoaded) return;
+  const canvas = new OffscreenCanvas(250, 128);
+  const ctx = canvas.getContext('2d');
+  // Fill with white background first to handle alpha/transparent images
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 250, 128);
+  ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, 250, 128);
+  const imageData = ctx.getImageData(0, 0, 250, 128);
+  const data = imageData.data;
+  const b = parseInt(bright.value);
+  const c = parseInt(contrast.value);
+  const factor = (259 * (c + 255)) / (255 * (259 - c));
+  for (let i = 0; i < data.length; i += 4) {
+    let gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+    gray = factor * (gray + b - 128) + 128; gray = Math.max(0, Math.min(255, gray));
+    data[i] = data[i+1] = data[i+2] = gray;
+  }
+  if (ditherMode.value === 'floyd-steinberg') {
+    floydSteinbergDither(data, 250, 128);
+  } else if (ditherMode.value === 'bayer') {
+    bayerDither(data, 250, 128);
+  } else {
+    for (let i = 0; i < data.length; i += 4) { const v = data[i] < 128 ? 0 : 255; data[i] = data[i+1] = data[i+2] = v; }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  pctx.clearRect(0, 0, 250, 128); pctx.drawImage(canvas, 0, 0);
+  canvas.convertToBlob({ type: 'image/png' }).then(blob => { const reader = new FileReader(); reader.onload = () => { processedImage = reader.result.split(',')[1]; }; reader.readAsDataURL(blob); });
+}
+
+function floydSteinbergDither(data, w, h) {
+  const gray = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) gray[y * w + x] = data[(y * w + x) * 4];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x; const oldPixel = gray[idx]; const newPixel = oldPixel < 128 ? 0 : 255; const error = oldPixel - newPixel;
+      gray[idx] = newPixel;
+      if (x + 1 < w) gray[idx + 1] += error * 7/16;
+      if (x - 1 >= 0 && y + 1 < h) gray[idx + w - 1] += error * 3/16;
+      if (y + 1 < h) gray[idx + w] += error * 5/16;
+      if (x + 1 < w && y + 1 < h) gray[idx + w + 1] += error * 1/16;
+    }
+  }
+  for (let i = 0; i < gray.length; i++) { const v = Math.max(0, Math.min(255, gray[i])); data[i*4] = data[i*4+1] = data[i*4+2] = v; }
+}
+
+function bayerDither(data, w, h) {
+  const matrix = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; const threshold = (matrix[y % 4][x % 4] / 16) * 255; const v = data[i] < threshold ? 0 : 255; data[i] = data[i+1] = data[i+2] = v; }
+}
+
+document.getElementById('nextStep').addEventListener('click', () => { if (!processedImage) return; showStep2(); });
+document.getElementById('backStep').addEventListener('click', showStep1);
+function showStep1() { document.getElementById('step1').classList.add('active'); document.getElementById('step2').classList.remove('active'); document.getElementById('step1Content').style.display = 'block'; document.getElementById('step2Content').style.display = 'none'; }
+function showStep2() { document.getElementById('step1').classList.remove('active'); document.getElementById('step2').classList.add('active'); document.getElementById('step1Content').style.display = 'none'; document.getElementById('step2Content').style.display = 'block'; updateOverlayList(); updateOverlayPreview(); refreshOverlayControls(); }
+
+document.getElementById('addIP').addEventListener('click', () => {
+  if (overlays.elements.some(e => e.type === 'ip')) { document.getElementById('status').innerHTML = '<div class="status">Only one IP Address overlay is allowed.</div>'; refreshOverlayControls(); return; }
+  overlays.elements.push({ id: `element_${nextId++}`, type: 'ip', x: 6, y: 115, font_size: 1, color: 0, background: true, padding: 1 });
+  updateOverlayList(); updateOverlayPreview(); refreshOverlayControls();
+});
+
+document.getElementById('addQR').addEventListener('click', () => {
+  if (overlays.elements.some(e => e.type === 'qr')) { document.getElementById('status').innerHTML = '<div class="status">Only one QR Code overlay is allowed.</div>'; refreshOverlayControls(); return; }
+  overlays.elements.push({ id: `element_${nextId++}`, type: 'qr', x: 195, y: 5, width: 50, height: 50 });
+  updateOverlayList(); updateOverlayPreview(); refreshOverlayControls();
+});
+
+document.getElementById('clearOverlays').addEventListener('click', () => { overlays.elements = []; updateOverlayList(); updateOverlayPreview(); refreshOverlayControls(); });
+
+function updateOverlayList() {
+  const list = document.getElementById('overlayList');
+  const hasIP = overlays.elements.some(e => e.type === 'ip');
+  list.innerHTML = '';
+  if (overlays.elements.length === 0) { list.innerHTML = '<div class="small">No overlays added. Add an IP address to continue.</div>'; }
+  else { overlays.elements.forEach(el => { const row = document.createElement('div'); row.className = 'overlay-item'; const type = document.createElement('span'); type.className = 'overlay-type'; type.textContent = el.type.toUpperCase(); const coords = document.createElement('span'); coords.className = 'overlay-coords'; coords.textContent = `x=${Math.round(el.x)}, y=${Math.round(el.y)}`; const remove = document.createElement('button'); remove.textContent = 'Remove'; remove.onclick = () => { overlays.elements = overlays.elements.filter(e => e.id !== el.id); updateOverlayList(); updateOverlayPreview(); refreshOverlayControls(); }; row.appendChild(type); row.appendChild(coords); row.appendChild(remove); list.appendChild(row); }); }
+  document.getElementById('displayBtn').disabled = !hasIP || !processedImage; document.getElementById('saveBtn').disabled = !hasIP || !processedImage;
+}
+
+function refreshOverlayControls() { octx.clearRect(0, 0, 250, 128); octx.drawImage(preview, 0, 0); updateOverlayPreview(); }
+
+function updateOverlayPreview() {
+  const container = document.getElementById('overlayElements');
+  container.innerHTML = '';
+  octx.clearRect(0, 0, 250, 128); octx.drawImage(preview, 0, 0);
+  overlays.elements.forEach(el => {
+    const div = document.createElement('div');
+    div.className = 'overlay-element ' + el.type;
+    div.style.border = '1px solid transparent';
+    if (el.type === 'ip') {
+      const measuredText = '172.21.11.123';
+      const padding = el.padding ?? 2;
+      div.innerHTML = `<span style="font-size:8px;font-family:monospace">${measuredText}</span>`;
+      const baseline = el.y;
+      const fakeHeight = 9; const ipTopCore = Math.max(7, Math.ceil(fakeHeight * 0.78));
+      const ipTopOffset = ipTopCore + padding;
+      div.style.left = (el.x * 2) + 'px';
+      div.style.top = ((baseline - ipTopOffset) * 2) + 'px';
+    } else if (el.type === 'qr') {
+      const qW = el.width || 50; const qH = el.height || 50;
+      div.style.left = (el.x * 2) + 'px';
+      div.style.top = (el.y * 2) + 'px';
+      div.style.width = (qW * 2) + 'px';
+      div.style.height = (qH * 2) + 'px';
+      div.innerHTML = '<div style="font-size:16px">QR</div>';
+    }
+    makeDraggable(div, el); container.appendChild(div);
+  });
+}
+
+function makeDraggable(element, data) {
+  let isDragging = false; let startX, startY, initialX, initialY;
+  element.addEventListener('mousedown', (e) => { isDragging = true; element.classList.add('dragging'); startX = e.clientX; startY = e.clientY; initialX = data.x; initialY = data.y; e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = (e.clientX - startX) / 2; const dy = (e.clientY - startY) / 2;
+    let elementWidth = data.type === 'qr' ? (data.width || 50) : Math.ceil(element.offsetWidth / 2) || 46;
+    let elementHeight = data.type === 'qr' ? (data.height || 50) : Math.ceil(element.offsetHeight / 2) || 9;
+    data.width = elementWidth; data.height = elementHeight;
+    const ipTopOffset = Math.max(7, Math.ceil(elementHeight * 0.78));
+    const ipBottomOffset = Math.max(2, elementHeight - ipTopOffset);
+    const minY = (data.type === 'ip') ? ipTopOffset : 0;
+    const maxY = (data.type === 'ip') ? (128 - ipBottomOffset) : (128 - elementHeight);
+    const minX = 0; const maxX = 250 - elementWidth;
+    data.x = Math.max(minX, Math.min(maxX, initialX + dx));
+    data.y = Math.max(minY, Math.min(maxY, initialY + dy));
+    element.style.left = (data.x * 2) + 'px';
+    if (data.type === 'ip') { const baseline = Math.max(minY, data.y); const ipTopOffset2 = Math.max(7, Math.ceil(elementHeight * 0.78)); element.style.top = ((baseline - ipTopOffset2) * 2) + 'px'; } else { element.style.top = (data.y * 2) + 'px'; }
+    octx.clearRect(0, 0, 250, 128); octx.drawImage(preview, 0, 0); updateOverlayList();
+  });
+  document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; element.classList.remove('dragging'); } });
+}
+
+document.getElementById('displayBtn').addEventListener('click', async () => {
+  if (!vscode || !processedImage) return;
+  document.getElementById('status').innerHTML = '<div class="status">Sending to E-ink display...</div>';
+  vscode.postMessage({ type: 'display', png: processedImage, overlays: overlays });
+});
+
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  if (!vscode || !processedImage) return;
+  document.getElementById('status').innerHTML = '<div class="status">Saving template...</div>';
+  vscode.postMessage({ type: 'saveTemplate', png: processedImage, overlays: overlays });
+});
+
+if (vscode) {
+  window.addEventListener('message', (e) => {
+    const msg = e.data;
+    if (msg.type === 'displayDone') {
+      document.getElementById('status').innerHTML = '<div class="status success">✓ Displayed on E-ink successfully</div>';
+    } else if (msg.type === 'error') {
+      document.getElementById('status').innerHTML = `<div class="status error">Error: ${msg.message}</div>`;
+    }
+  });
+}
+</script>
+</body>
+</html>
+

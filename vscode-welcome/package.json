@@ -1,0 +1,69 @@
+{
+  "name": "pamir-welcome",
+  "displayName": "Pamir Welcome & Layout",
+  "publisher": "pamir",
+  "version": "0.5.0",
+  "description": "Custom Pamir landing page and actions for Distiller CM5 dev",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pamir.openHome",
+        "title": "Pamir: Open Welcome"
+      },
+      {
+        "command": "pamir.enableDefaultWelcome",
+        "title": "Pamir: Re‑enable Default Welcome"
+      },
+      {
+        "command": "pamir.createProject",
+        "title": "Create Distiller Project",
+        "category": "Pamir"
+      },
+      {
+        "command": "pamir.cloneExamples",
+        "title": "Clone Pamir Examples",
+        "category": "Pamir"
+      },
+      {
+        "command": "pamir.openDocs",
+        "title": "Open Pamir Docs",
+        "category": "Pamir"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "workbench.explorer.fileView",
+        "contents": "Getting started with Pamir?\n\n- [Open Pamir Welcome](command:pamir.openHome)\n- [Open Docs](command:pamir.openDocs)\n- [Clone Examples](command:pamir.cloneExamples)\n- [Create New Project](command:pamir.createProject)",
+        "when": "true"
+      }
+    ]
+  },
+  "files": [
+    "out/**",
+    "media/**",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --outfile=out/extension.js --external:vscode",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "marked": "^16.2.1"
+  }
+}

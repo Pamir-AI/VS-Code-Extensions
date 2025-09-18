@@ -1,0 +1,101 @@
+{
+  "name": "device-manager",
+  "displayName": "Device Manager",
+  "description": "An extension to start/stop their claude code trail on demand",
+  "version": "0.0.6",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "icon.png",
+  
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "device-manager.refresh",
+        "title": "Refresh Trial Status"
+      },
+      {
+        "command": "device-manager.openEink",
+        "title": "Open E‑ink Wallpaper Designer"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "device-manager",
+          "title": "Device Manager",
+          "icon": "icon.png"
+        }
+      ]
+    },
+    "views": {
+      "device-manager": [
+        {
+          "id": "device-manager.welcomeView",
+          "name": "Welcome",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pamir E‑ink",
+      "properties": {
+        "pamir.eink.pythonPath": {
+          "type": "string",
+          "default": "/opt/distiller-cm5-sdk/.venv/bin/python",
+          "description": "Python interpreter with SDK access (uses SDK venv by default)."
+        },
+        "pamir.eink.tunnelUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "Tunnel URL that will be encoded in the QR code (e.g., your public tunnel URL or http://192.168.1.100:8080)"
+        },
+        "pamir.eink.timeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "Subprocess timeout in milliseconds for display operations."
+        },
+        "pamir.eink.debugMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep temporary files for debugging (normally cleaned up)."
+        }
+      }
+    }
+  },
+  "activationEvents": [
+    "onCommand:device-manager.openEink",
+    "onView:device-manager.welcomeView"
+  ],
+  "scripts": {
+    "vscode:prepublish": "echo 'Skipping prepublish'",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.103.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "eslint": "^9.34.0",
+    "esbuild": "^0.25.9",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.2",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
