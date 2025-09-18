@@ -5,6 +5,8 @@ This page walks you through connecting Claude, Cursor, and OpenAI Codex to your 
 > ⚠️ **Privacy Notice (Claude Free Trial):**  
 > Our complimentary Claude Code subscription routes requests through our account, which means your prompts may be visible to us. You can disable the proxy at any time in **Settings**.
 
+>💡 **Disclaimer**: You’re receiving an early beta version of the device. You will encounter bugs, and we are actively patching them. We’re a very small team (just 3 people), so if you can help by reporting bugs, sharing videos, etc., please reach out on Discord: https://discord.gg/NbJJFds7Rf or email us at founders@pamir.ai 
+
 ---
 
 ## 1) Connect AI Services
@@ -40,7 +42,7 @@ scp ~/.codex/auth.json distiller@DEVICE_IP:~/.codex/auth.json
 
 **Option 2 — Login via Distiller Web UI with port forwarding**
 
-1. In the Distiller Web UI, click **Add Port**, enter `1455`, then press **Enter**.
+1. In the Distiller Web UI, click **Add Port**, enter `1455`, then press **Enter** (ignore if 1455 already been ported).
    ![Add Port: 1455](./images/add-port-1455.png)
 
 2. Start the normal Codex login flow. When redirected to:
@@ -48,7 +50,7 @@ scp ~/.codex/auth.json distiller@DEVICE_IP:~/.codex/auth.json
    * `http://localhost:1455/auth/*`
    * `http://localhost:1455/success/*`
 
-   Replace `localhost:1455` with the forwarded address shown in your Ports table.
+   Replace `localhost:1455` with the forwarded address shown in your Ports table, then hit enter.
    ![Ports table showing forwarded URL](./images/ports-table.png)
 
    Continue the flow as usual.
@@ -69,14 +71,18 @@ cursor-agent
 
 Navigate to the sample project and run Claude:
 
+you can run it in terminal 
 ```bash
-cd ~/project/ESP32-S3-Matrix
-claude
+cd ~/project/esp32-agent-example && claude
 ```
+or just click their extension button ![claude logo pic](./images/claude_logo.png)
 
 Example prompt:
+> **create a cool rainbow 8x8 animation on my esp32, and upload it for me**
 
-> Create a snake game controlled by tilting the board.
+> It might ask for you help downloading stuff, help it, first time building the project might take longer time due to initialization and tool preparation.
+
+> 
 
 **Board features:** 8×8 LED matrix, IMU, BLE, Wi-Fi.
 Claude should generate code, install toolchains, and flash the ESP32-S3. It will ask for manual steps only when needed.
@@ -153,5 +159,8 @@ from distiller_cm5_sdk.piper import Piper
 
 Piper().speak_stream("Hello from Distiller!", volume=50)
 ```
+
+## 4) Network Settings
+visit http://YOUR_DEVICE_IP:8080/ to update any network related changes
 
 ---
