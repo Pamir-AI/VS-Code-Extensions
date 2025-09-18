@@ -414,10 +414,32 @@ function makeDraggable(element, data) {
   document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; element.classList.remove('dragging'); } });
 }
 
+let currentRequest = null;
+let requestTimeout = null;
+
 document.getElementById('displayBtn').addEventListener('click', async () => {
   if (!vscode || !processedImage) return;
-  document.getElementById('status').innerHTML = '<div class="status">Sending to E-ink display...</div>';
-  vscode.postMessage({ type: 'display', png: processedImage, overlays: overlays });
+  
+  // Cancel any existing request
+  if (requestTimeout) {
+    clearTimeout(requestTimeout);
+  }
+  
+  currentRequest = Date.now();
+  const status = document.getElementById('status');
+  status.innerHTML = '<div class="status">Sending to E-ink display...</div>';
+  
+  console.log(`[Frontend] Starting display request ${currentRequest}`);
+  vscode.postMessage({ type: 'display', png: processedImage, overlays: overlays, requestId: currentRequest });
+  
+  // Set timeout to detect no response
+  requestTimeout = setTimeout(() => {
+    if (currentRequest) {
+      console.log(`[Frontend] Request ${currentRequest} timed out - no response received`);
+      status.innerHTML = '<div class="status error">No response from extension (timeout). Check VS Code output panel for details.</div>';
+      currentRequest = null;
+    }
+  }, 45000); // 45 second timeout
 });
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
@@ -429,9 +451,25 @@ document.getElementById('saveBtn').addEventListener('click', async () => {
 if (vscode) {
   window.addEventListener('message', (e) => {
     const msg = e.data;
+    const timestamp = new Date().toISOString();
+    
+    console.log(`[Frontend ${timestamp}] Received message:`, msg);
+    
     if (msg.type === 'displayDone') {
+      console.log(`[Frontend] Display completed for request ${msg.requestId || 'unknown'}`);
+      if (requestTimeout) {
+        clearTimeout(requestTimeout);
+        requestTimeout = null;
+      }
+      currentRequest = null;
       document.getElementById('status').innerHTML = '<div class="status success">✓ Displayed on E-ink successfully</div>';
     } else if (msg.type === 'error') {
+      console.log(`[Frontend] Error received for request ${msg.requestId || 'unknown'}: ${msg.message}`);
+      if (requestTimeout) {
+        clearTimeout(requestTimeout);
+        requestTimeout = null;
+      }
+      currentRequest = null;
       document.getElementById('status').innerHTML = `<div class="status error">Error: ${msg.message}</div>`;
     }
   });
