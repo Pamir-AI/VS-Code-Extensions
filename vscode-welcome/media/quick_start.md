@@ -7,6 +7,10 @@ This page walks you through connecting Claude, Cursor, and OpenAI Codex to your 
 
 >💡 **Disclaimer**: You’re receiving an early beta version of the device. You will encounter bugs, and we are actively patching them. We’re a very small team (just 3 people), so if you can help by reporting bugs, sharing videos, etc., please reach out on Discord: https://discord.gg/NbJJFds7Rf or email us at founders@pamir.ai 
 
+## Change the Default Password
+
+Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open `/opt/claude-code-web-manager/config/production.json` directly in VS Code. Update the password value, press save, and your changes will apply the next time you log in.
+
 ---
 
 ## 1) Connect AI Services
