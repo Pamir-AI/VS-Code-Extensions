@@ -201,6 +201,63 @@ let processedImage = null;
 let overlays = { elements: [] };
 let nextId = 1;
 
+const EDGE_PADDING = 6;
+const QR_DEFAULT_SIZE = 50;
+const IP_SAMPLE_TEXT = '255.255.255.255';
+const FONT_WIDTH = 6;
+const FONT_HEIGHT = 8;
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+function computeIpDimensions(data) {
+  const rawPadding = Math.max(0, data.padding ?? 1);
+  const padding = data.background === false ? 0 : rawPadding;
+  const fontSize = Math.max(1, data.font_size ?? 1);
+  const textWidth = IP_SAMPLE_TEXT.length * FONT_WIDTH * fontSize;
+  const textHeight = FONT_HEIGHT * fontSize;
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = textHeight + padding * 2;
+  return { padding, fontSize, textWidth, textHeight, boxWidth, boxHeight };
+}
+
+function applyIpPosition(element, data) {
+  const dims = computeIpDimensions(data);
+  data.width = dims.boxWidth;
+  data.height = dims.boxHeight;
+  const minX = EDGE_PADDING;
+  const maxX = Math.max(minX, 250 - dims.boxWidth - EDGE_PADDING);
+  const minY = EDGE_PADDING;
+  const maxY = Math.max(minY, 128 - dims.boxHeight - EDGE_PADDING);
+  data.x = clamp(data.x ?? minX, minX, maxX);
+  data.y = clamp(data.y ?? minY, minY, maxY);
+  element.style.boxSizing = 'border-box';
+  element.style.display = 'flex';
+  element.style.alignItems = 'center';
+  element.style.justifyContent = 'center';
+  element.style.width = (dims.textWidth * 2) + 'px';
+  element.style.height = (dims.textHeight * 2) + 'px';
+  element.style.padding = (dims.padding * 2) + 'px';
+  element.style.left = (data.x * 2) + 'px';
+  element.style.top = (data.y * 2) + 'px';
+}
+
+function applyQrPosition(element, data) {
+  const width = data.width || QR_DEFAULT_SIZE;
+  const height = data.height || QR_DEFAULT_SIZE;
+  const minX = EDGE_PADDING;
+  const maxX = 250 - width - EDGE_PADDING;
+  const minY = EDGE_PADDING;
+  const maxY = 128 - height - EDGE_PADDING;
+  data.width = width;
+  data.height = height;
+  data.x = clamp(data.x ?? minX, minX, maxX);
+  data.y = clamp(data.y ?? minY, minY, maxY);
+  element.style.width = (width * 2) + 'px';
+  element.style.height = (height * 2) + 'px';
+  element.style.left = (data.x * 2) + 'px';
+  element.style.top = (data.y * 2) + 'px';
+}
+
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -339,13 +396,15 @@ function showStep2() { document.getElementById('step1').classList.remove('active
 
 document.getElementById('addIP').addEventListener('click', () => {
   if (overlays.elements.some(e => e.type === 'ip')) { document.getElementById('status').innerHTML = '<div class="status">Only one IP Address overlay is allowed.</div>'; refreshOverlayControls(); return; }
-  overlays.elements.push({ id: `element_${nextId++}`, type: 'ip', x: 6, y: 115, font_size: 1, color: 0, background: true, padding: 1 });
+  const dims = computeIpDimensions({ padding: 1, font_size: 1 });
+  const defaultY = 128 - dims.boxHeight - EDGE_PADDING;
+  overlays.elements.push({ id: `element_${nextId++}`, type: 'ip', x: EDGE_PADDING, y: defaultY, font_size: 1, color: 0, background: true, padding: 1 });
   updateOverlayList(); updateOverlayPreview(); refreshOverlayControls();
 });
 
 document.getElementById('addQR').addEventListener('click', () => {
   if (overlays.elements.some(e => e.type === 'qr')) { document.getElementById('status').innerHTML = '<div class="status">Only one QR Code overlay is allowed.</div>'; refreshOverlayControls(); return; }
-  overlays.elements.push({ id: `element_${nextId++}`, type: 'qr', x: 195, y: 5, width: 50, height: 50 });
+  overlays.elements.push({ id: `element_${nextId++}`, type: 'qr', x: 250 - QR_DEFAULT_SIZE - EDGE_PADDING, y: EDGE_PADDING, width: QR_DEFAULT_SIZE, height: QR_DEFAULT_SIZE });
   updateOverlayList(); updateOverlayPreview(); refreshOverlayControls();
 });
 
@@ -372,43 +431,37 @@ function updateOverlayPreview() {
     div.style.border = '1px solid transparent';
     if (el.type === 'ip') {
       const measuredText = '172.21.11.123';
-      const padding = el.padding ?? 2;
-      div.innerHTML = `<span style="font-size:8px;font-family:monospace">${measuredText}</span>`;
-      const baseline = el.y;
-      const fakeHeight = 9; const ipTopCore = Math.max(7, Math.ceil(fakeHeight * 0.78));
-      const ipTopOffset = ipTopCore + padding;
-      div.style.left = (el.x * 2) + 'px';
-      div.style.top = ((baseline - ipTopOffset) * 2) + 'px';
+      div.innerHTML = `<span style="display:block;width:100%;text-align:center;font-size:8px;font-family:monospace">${measuredText}</span>`;
     } else if (el.type === 'qr') {
-      const qW = el.width || 50; const qH = el.height || 50;
-      div.style.left = (el.x * 2) + 'px';
-      div.style.top = (el.y * 2) + 'px';
-      div.style.width = (qW * 2) + 'px';
-      div.style.height = (qH * 2) + 'px';
       div.innerHTML = '<div style="font-size:16px">QR</div>';
     }
-    makeDraggable(div, el); container.appendChild(div);
+    container.appendChild(div);
+    if (el.type === 'ip') { applyIpPosition(div, el); }
+    else if (el.type === 'qr') { applyQrPosition(div, el); }
+    makeDraggable(div, el);
   });
 }
 
 function makeDraggable(element, data) {
   let isDragging = false; let startX, startY, initialX, initialY;
-  element.addEventListener('mousedown', (e) => { isDragging = true; element.classList.add('dragging'); startX = e.clientX; startY = e.clientY; initialX = data.x; initialY = data.y; e.preventDefault(); });
+  element.addEventListener('mousedown', (e) => { isDragging = true; element.classList.add('dragging'); startX = e.clientX; startY = e.clientY; initialX = data.x ?? EDGE_PADDING; initialY = data.y ?? EDGE_PADDING; e.preventDefault(); });
   document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     const dx = (e.clientX - startX) / 2; const dy = (e.clientY - startY) / 2;
-    let elementWidth = data.type === 'qr' ? (data.width || 50) : Math.ceil(element.offsetWidth / 2) || 46;
-    let elementHeight = data.type === 'qr' ? (data.height || 50) : Math.ceil(element.offsetHeight / 2) || 9;
-    data.width = elementWidth; data.height = elementHeight;
-    const ipTopOffset = Math.max(7, Math.ceil(elementHeight * 0.78));
-    const ipBottomOffset = Math.max(2, elementHeight - ipTopOffset);
-    const minY = (data.type === 'ip') ? ipTopOffset : 0;
-    const maxY = (data.type === 'ip') ? (128 - ipBottomOffset) : (128 - elementHeight);
-    const minX = 0; const maxX = 250 - elementWidth;
-    data.x = Math.max(minX, Math.min(maxX, initialX + dx));
-    data.y = Math.max(minY, Math.min(maxY, initialY + dy));
-    element.style.left = (data.x * 2) + 'px';
-    if (data.type === 'ip') { const baseline = Math.max(minY, data.y); const ipTopOffset2 = Math.max(7, Math.ceil(elementHeight * 0.78)); element.style.top = ((baseline - ipTopOffset2) * 2) + 'px'; } else { element.style.top = (data.y * 2) + 'px'; }
+    if (data.type === 'ip') {
+      const dims = computeIpDimensions(data);
+      data.width = dims.boxWidth;
+      data.height = dims.boxHeight;
+      data.x = initialX + dx;
+      data.y = initialY + dy;
+      applyIpPosition(element, data);
+    } else if (data.type === 'qr') {
+      data.width = Math.max(1, Math.ceil(element.offsetWidth / 2));
+      data.height = Math.max(1, Math.ceil(element.offsetHeight / 2));
+      data.x = initialX + dx;
+      data.y = initialY + dy;
+      applyQrPosition(element, data);
+    }
     octx.clearRect(0, 0, 250, 128); octx.drawImage(preview, 0, 0); updateOverlayList();
   });
   document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; element.classList.remove('dragging'); } });
@@ -477,4 +530,3 @@ if (vscode) {
 </script>
 </body>
 </html>
-
