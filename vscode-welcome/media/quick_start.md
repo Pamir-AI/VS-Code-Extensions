@@ -31,6 +31,7 @@ Follow the prompts to complete authentication.
 Known issue: [https://github.com/openai/codex/issues/2798](https://github.com/openai/codex/issues/2798)
 
 **Option 1 — Copy existing auth from your computer**
+> If you are using windows just use **option 2** below
 
 > Replace `DEVICE_IP` with your device’s IP. Default password is `one`.
 
