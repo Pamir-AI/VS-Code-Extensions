@@ -32,6 +32,17 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand('pamir.openDocs', async () => {
       await vscode.env.openExternal(vscode.Uri.parse('https://docs.pamir.ai/distiller-cm5'));
     }),
+    vscode.commands.registerCommand('pamir.openPasswordConfig', async () => {
+      try {
+        const configUri = vscode.Uri.file('/opt/claude-code-web-manager/config/production.json');
+        const doc = await vscode.workspace.openTextDocument(configUri);
+        await vscode.window.showTextDocument(doc, { preview: false });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Unable to open password configuration: ${message}`);
+        console.log('[pamir] Unable to open password configuration', err);
+      }
+    }),
     vscode.commands.registerCommand('pamir.openHome', () => openWelcome(ctx))
   );
 

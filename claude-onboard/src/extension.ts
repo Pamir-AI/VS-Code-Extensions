@@ -1155,8 +1155,49 @@ interface Overlays {
   elements: OverlayElement[];
 }
 
+const CANVAS_WIDTH = 250;
+const CANVAS_HEIGHT = 128;
+const EDGE_PADDING = 6;
+const QR_DEFAULT_SIZE = 50;
+const MAX_IP_SAMPLE_LENGTH = '255.255.255.255'.length;
+const FONT_WIDTH = 6;
+const FONT_HEIGHT = 8;
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+function computeIpBox(element: OverlayElement) {
+  const rawPadding = Math.max(0, element.padding ?? 1);
+  const padding = element.background === false ? 0 : rawPadding;
+  const fontSize = Math.max(1, Math.round(element.font_size ?? 1));
+  const textWidth = MAX_IP_SAMPLE_LENGTH * FONT_WIDTH * fontSize;
+  const textHeight = FONT_HEIGHT * fontSize;
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = textHeight + padding * 2;
+  return { padding, fontSize, textWidth, textHeight, boxWidth, boxHeight };
+}
+
+// Create output channel for logging
+let einkOutputChannel: vscode.OutputChannel | undefined;
+
+function getEinkLogger(): vscode.OutputChannel {
+  if (!einkOutputChannel) {
+    einkOutputChannel = vscode.window.createOutputChannel('E-ink Display');
+  }
+  return einkOutputChannel;
+}
+
+function logEink(message: string) {
+  const timestamp = new Date().toISOString();
+  const logger = getEinkLogger();
+  logger.appendLine(`[${timestamp}] ${message}`);
+  console.log(`[E-ink] ${message}`);
+}
+
 async function openEinkWizard(_ctx: vscode.ExtensionContext) {
+  logEink('Opening E-ink wizard');
+  
   if (!(process as any).versions?.node) {
+    logEink('ERROR: Node extension host not available');
     vscode.window.showErrorMessage('Pamir E‑ink requires the Node extension host (workspace extension).');
     return;
   }
@@ -1168,44 +1209,79 @@ async function openEinkWizard(_ctx: vscode.ExtensionContext) {
     { enableScripts: true, retainContextWhenHidden: true }
   );
 
+  logEink('Webview panel created, loading HTML');
   panel.webview.html = await getEinkHtml(panel.webview);
+  logEink('HTML loaded successfully');
 
   panel.webview.onDidReceiveMessage(async (msg) => {
+    const requestId = Date.now();
+    logEink(`[${requestId}] Received message: ${msg?.type}`);
+    
     try {
       switch (msg?.type) {
         case 'display': {
+          logEink(`[${requestId}] Processing display request with ${msg.overlays?.elements?.length || 0} overlays`);
+          
           if (!msg.overlays?.elements?.some((e: OverlayElement) => e.type === 'ip')) {
+            logEink(`[${requestId}] ERROR: No IP overlay found`);
             throw new Error('At least one IP address overlay is required');
           }
+          
+          logEink(`[${requestId}] Starting display process`);
           await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Rendering to E‑ink display…', cancellable: false },
-            () => displayOnDevice(msg.png, msg.overlays)
+            async () => {
+              try {
+                await displayOnDevice(msg.png, msg.overlays, requestId);
+                logEink(`[${requestId}] Display process completed successfully`);
+              } catch (error) {
+                logEink(`[${requestId}] Display process failed: ${error}`);
+                throw error;
+              }
+            }
           );
-          panel.webview.postMessage({ type: 'displayDone', ok: true });
+          
+          logEink(`[${requestId}] Sending success response to webview`);
+          panel.webview.postMessage({ type: 'displayDone', ok: true, requestId });
           break;
         }
         case 'saveTemplate': {
+          logEink(`[${requestId}] Processing save template request`);
+          
           if (!msg.overlays?.elements?.some((e: OverlayElement) => e.type === 'ip')) {
+            logEink(`[${requestId}] ERROR: No IP overlay found for template save`);
             throw new Error('At least one IP address overlay is required');
           }
+          
           await saveTemplate(msg.png, msg.overlays);
+          logEink(`[${requestId}] Template saved successfully`);
           vscode.window.showInformationMessage('Template saved to ~/template/default/template.json');
           break;
         }
+        default: {
+          logEink(`[${requestId}] WARNING: Unknown message type: ${msg?.type}`);
+        }
       }
     } catch (err: any) {
+      logEink(`[${requestId}] ERROR in message handler: ${err?.message ?? err}`);
+      logEink(`[${requestId}] Error stack: ${err?.stack || 'No stack trace'}`);
       vscode.window.showErrorMessage(`E‑ink error: ${err?.message ?? err}`);
-      panel.webview.postMessage({ type: 'error', message: String(err) });
+      panel.webview.postMessage({ type: 'error', message: String(err), requestId });
     }
   });
 }
 
-async function createTemplateJson(imagePath: string, overlays: Overlays): Promise<string> {
+async function createTemplateJson(imagePath: string, overlays: Overlays, requestId?: number): Promise<string> {
+  const reqId = requestId || Date.now();
+  logEink(`[${reqId}] Creating template JSON for image: ${imagePath}`);
+  
   const tmpDir = path.join(os.tmpdir(), 'pamir-eink');
   await fsp.mkdir(tmpDir, { recursive: true });
 
   const timestamp = Date.now();
   const templatePath = path.join(tmpDir, `template-${timestamp}.json`);
+  
+  logEink(`[${reqId}] Template path: ${templatePath}`);
   const now = new Date();
   const created = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
 
@@ -1231,48 +1307,63 @@ async function createTemplateJson(imagePath: string, overlays: Overlays): Promis
     height: null,
   });
 
-  const M = 10;
   for (const element of overlays.elements) {
     if (element.type === 'ip') {
-      const measuredW = Math.max(1, Math.floor(element.width ?? 46));
-      const measuredH = Math.max(1, Math.floor(element.height ?? 9));
-      const padding = Math.max(0, element.padding ?? 2);
-      const measuredWidthWithPad = measuredW + padding * 2;
-      const worstChars = 15;
-      const pxPerChar = 8;
-      const fudge = 1.15;
-      const worstCaseWidth = Math.round(worstChars * pxPerChar * fudge) + padding * 2;
-      const ipWidth = Math.min(250, Math.max(measuredWidthWithPad, worstCaseWidth));
-      const ipTopCore = Math.max(7, Math.ceil(measuredH * 0.78));
-      const ipBottomCore = Math.max(2, measuredH - ipTopCore);
-      const ipTopOffset = ipTopCore + padding;
-      const ipBottomOffset = ipBottomCore + padding;
-      const ipX = Math.max(M, Math.min(250 - ipWidth - M, element.x));
-      const minBaselineY = ipTopOffset + M;
-      const maxBaselineY = 128 - ipBottomOffset - M;
-      const ipY = Math.max(minBaselineY, Math.min(maxBaselineY, element.y));
+      const dims = computeIpBox(element);
+      const minX = EDGE_PADDING;
+      const maxX = Math.max(minX, CANVAS_WIDTH - dims.boxWidth - EDGE_PADDING);
+      const minY = EDGE_PADDING;
+      const maxY = Math.max(minY, CANVAS_HEIGHT - dims.boxHeight - EDGE_PADDING);
+      const ipX = clamp(element.x, minX, maxX);
+      const ipY = clamp(element.y, minY, maxY);
+      const textX = ipX + dims.padding;
+      const textY = ipY + dims.padding;
+
+      const includeBackground = element.background ?? true;
+      if (includeBackground) {
+        layers.push({
+          id: `${element.id}_background`,
+          type: 'rectangle',
+          visible: true,
+          x: ipX,
+          y: ipY,
+          width: Math.round(dims.boxWidth),
+          height: Math.round(dims.boxHeight),
+          filled: true,
+          color: 255,
+        });
+      }
 
       layers.push({
         id: element.id,
         type: 'text',
         visible: true,
-        x: ipX,
-        y: ipY,
+        x: Math.round(textX),
+        y: Math.round(textY),
         text: '$IP_ADDRESS',
         placeholder_type: 'ip',
-        color: element.color || 0,
-        font_size: Math.round((element.font_size || 1) * 1.1),
-        background: element.background || false,
-        padding,
+        color: element.color ?? 0,
+        font_size: Math.round((element.font_size ?? 1) * 1.1),
+        background: false,
+        padding: 0,
         rotate: 0,
         flip_h: false,
         flip_v: false,
+        width: Math.round(dims.textWidth),
+        height: Math.round(dims.textHeight),
+        box_width: Math.round(dims.boxWidth),
+        box_height: Math.round(dims.boxHeight),
+        box_padding: dims.padding,
       });
     } else if (element.type === 'qr') {
-      const qrWidth = element.width || 50;
-      const qrHeight = element.height || 50;
-      const qrX = Math.max(M, Math.min(250 - qrWidth - M, element.x));
-      const qrY = Math.max(M, Math.min(128 - qrHeight - M, element.y));
+      const qrWidth = element.width || QR_DEFAULT_SIZE;
+      const qrHeight = element.height || QR_DEFAULT_SIZE;
+      const minQrX = EDGE_PADDING;
+      const maxQrX = Math.max(minQrX, CANVAS_WIDTH - qrWidth - EDGE_PADDING);
+      const minQrY = EDGE_PADDING;
+      const maxQrY = Math.max(minQrY, CANVAS_HEIGHT - qrHeight - EDGE_PADDING);
+      const qrX = clamp(element.x, minQrX, maxQrX);
+      const qrY = clamp(element.y, minQrY, maxQrY);
 
       layers.push({
         id: element.id,
@@ -1282,8 +1373,8 @@ async function createTemplateJson(imagePath: string, overlays: Overlays): Promis
         y: qrY,
         text: '$QR_CODE',
         placeholder_type: 'qr',
-        width: element.width || 50,
-        height: element.height || 50,
+        width: qrWidth,
+        height: qrHeight,
         rotate: 0,
         flip_h: false,
         flip_v: false,
@@ -1295,18 +1386,27 @@ async function createTemplateJson(imagePath: string, overlays: Overlays): Promis
     template_version: '1.0',
     name: `preview_${timestamp}`,
     created,
-    width: 250,
-    height: 128,
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
     layers,
   };
 
+  logEink(`[${reqId}] Template JSON has ${layers.length} layers`);
   await fsp.writeFile(templatePath, JSON.stringify(template, null, 2));
+  logEink(`[${reqId}] Template JSON written successfully`);
   return templatePath;
 }
 
-async function createPythonScript(operation: 'preview' | 'display', templatePath: string, tunnelUrl: string, outputPath?: string): Promise<string> {
+async function createPythonScript(operation: 'preview' | 'display', templatePath: string, tunnelUrl: string, requestId?: number, outputPath?: string): Promise<string> {
+  const reqId = requestId || Date.now();
+  logEink(`[${reqId}] Creating Python script for operation: ${operation}`);
+  
   const tmpDir = path.join(os.tmpdir(), 'pamir-eink');
   const scriptPath = path.join(tmpDir, `sdk-${operation}-${Date.now()}.py`);
+  
+  logEink(`[${reqId}] Python script path: ${scriptPath}`);
+  logEink(`[${reqId}] Template path: ${templatePath}`);
+  logEink(`[${reqId}] Tunnel URL: ${tunnelUrl}`);
 
   let script = '';
   if (operation === 'preview') {
@@ -1314,9 +1414,15 @@ async function createPythonScript(operation: 'preview' | 'display', templatePath
 import sys
 from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
 
+MAX_IP_LEN = 15
+
+def center_ip(ip: str) -> str:
+    return ip.center(MAX_IP_LEN)
+
 try:
     renderer = TemplateRenderer("${templatePath}")
-    renderer.render_and_save('127.0.0.1', '${tunnelUrl}', '${outputPath}')
+    centered_ip = center_ip('127.0.0.1')
+    renderer.render_and_save(centered_ip, '${tunnelUrl}', '${outputPath}')
     print("Preview rendered successfully")
 except Exception as e:
     print(f"ERROR: {e}", file=sys.stderr)
@@ -1328,41 +1434,89 @@ import sys
 import subprocess
 import json
 import traceback
+import time
+import os
+
+print(f"[SCRIPT] Starting e-ink display script - Request ID: ${reqId}", file=sys.stderr)
+print(f"[SCRIPT] Python version: {sys.version}", file=sys.stderr)
+print(f"[SCRIPT] Current working directory: {os.getcwd()}", file=sys.stderr)
+print(f"[SCRIPT] Template file: ${templatePath}", file=sys.stderr)
+print(f"[SCRIPT] Tunnel URL: ${tunnelUrl}", file=sys.stderr)
+
+# Check if template file exists
+if not os.path.exists("${templatePath}"):
+    print(f"ERROR: Template file does not exist: ${templatePath}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[SCRIPT] Template file exists, size: {os.path.getsize('${templatePath}')} bytes", file=sys.stderr)
 
 # Debug: Print template content
-with open("${templatePath}", "r") as f:
-    template_data = json.load(f)
-    print(f"Template layers: {len(template_data.get('layers', []))}", file=sys.stderr)
-    for layer in template_data.get('layers', []):
-        print(f"  Layer: type={layer.get('type')}, id={layer.get('id')}", file=sys.stderr)
+try:
+    with open("${templatePath}", "r") as f:
+        template_data = json.load(f)
+        print(f"[SCRIPT] Template layers: {len(template_data.get('layers', []))}", file=sys.stderr)
+        for layer in template_data.get('layers', []):
+            print(f"[SCRIPT]   Layer: type={layer.get('type')}, id={layer.get('id')}", file=sys.stderr)
+except Exception as e:
+    print(f"ERROR: Failed to read template file: {e}", file=sys.stderr)
+    sys.exit(1)
 
-from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
+print(f"[SCRIPT] Importing TemplateRenderer...", file=sys.stderr)
+try:
+    from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
+    print(f"[SCRIPT] TemplateRenderer imported successfully", file=sys.stderr)
+except ImportError as e:
+    print(f"ERROR: Failed to import TemplateRenderer: {e}", file=sys.stderr)
+    sys.exit(1)
+
+MAX_IP_LEN = 15
+
+def center_ip(ip: str) -> str:
+    return ip.center(MAX_IP_LEN)
 
 try:
+    print(f"[SCRIPT] Getting device IP address...", file=sys.stderr)
     # Get device IP
     result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
     ip = result.stdout.split()[0] if result.stdout else '127.0.0.1'
-    print(f"Using IP: {ip}", file=sys.stderr)
-    print(f"Using tunnel URL: ${tunnelUrl}", file=sys.stderr)
-    
+    centered_ip = center_ip(ip)
+    print(f"[SCRIPT] Using IP: {ip}", file=sys.stderr)
+    print(f"[SCRIPT] Padded IP for centering: '{centered_ip}'", file=sys.stderr)
+    print(f"[SCRIPT] Using tunnel URL: ${tunnelUrl}", file=sys.stderr)
+
+    print(f"[SCRIPT] Creating TemplateRenderer instance...", file=sys.stderr)
     renderer = TemplateRenderer("${templatePath}")
+    print(f"[SCRIPT] TemplateRenderer created successfully", file=sys.stderr)
+    
+    print(f"[SCRIPT] Starting render_and_display...", file=sys.stderr)
+    start_time = time.time()
     try:
-        renderer.render_and_display(ip, '${tunnelUrl}')
+        renderer.render_and_display(centered_ip, '${tunnelUrl}')
+        end_time = time.time()
+        print(f"[SCRIPT] render_and_display completed in {end_time - start_time:.2f} seconds", file=sys.stderr)
     except UnboundLocalError as e:
         # Workaround SDK cleanup bug: 'display' referenced before assignment
         if 'display' in str(e):
-            print(f"WARN: Ignoring SDK cleanup bug: {e}", file=sys.stderr)
+            print(f"[SCRIPT] WARN: Ignoring SDK cleanup bug: {e}", file=sys.stderr)
         else:
+            print(f"ERROR: UnboundLocalError: {e}", file=sys.stderr)
             raise
+    print(f"[SCRIPT] Displayed on E-ink successfully", file=sys.stderr)
     print("Displayed on E-ink successfully")
 except Exception as e:
+    print(f"[SCRIPT] ERROR in main execution: {e}", file=sys.stderr)
+    print(f"[SCRIPT] Error type: {type(e).__name__}", file=sys.stderr)
+    print(f"[SCRIPT] Traceback: {traceback.format_exc()}", file=sys.stderr)
     print(f"ERROR: {e}", file=sys.stderr)
-    print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
     sys.exit(1)
+finally:
+    print(f"[SCRIPT] Script execution completed - Request ID: ${reqId}", file=sys.stderr)
 `;
   }
 
+  logEink(`[${reqId}] Writing Python script (${script.length} characters)`);
   await fsp.writeFile(scriptPath, script);
+  logEink(`[${reqId}] Python script written successfully`);
   return scriptPath;
 }
 
@@ -1379,85 +1533,140 @@ async function saveTemplate(imageBase64: string, overlays: Overlays): Promise<vo
   await fsp.writeFile(path.join(templateDir, 'template.json'), templateContent);
 }
 
-async function displayOnDevice(imageBase64: string, overlays: Overlays): Promise<void> {
+async function displayOnDevice(imageBase64: string, overlays: Overlays, requestId?: number): Promise<void> {
+  const reqId = requestId || Date.now();
+  logEink(`[${reqId}] displayOnDevice started`);
+  
   const tmpDir = path.join(os.tmpdir(), 'pamir-eink');
+  logEink(`[${reqId}] Creating temp directory: ${tmpDir}`);
   await fsp.mkdir(tmpDir, { recursive: true });
 
   const timestamp = Date.now();
   const inputPath = path.join(tmpDir, `display-${timestamp}.png`);
   const filesToClean: string[] = [];
+  
+  logEink(`[${reqId}] Image path: ${inputPath}`);
+  logEink(`[${reqId}] Base64 length: ${imageBase64.length}`);
+  logEink(`[${reqId}] Overlays count: ${overlays.elements?.length || 0}`);
 
   try {
+    logEink(`[${reqId}] Writing PNG file from base64`);
     await fsp.writeFile(inputPath, Buffer.from(imageBase64, 'base64'));
     filesToClean.push(inputPath);
+    logEink(`[${reqId}] PNG file written successfully`);
 
-    const templatePath = await createTemplateJson(inputPath, overlays);
+    logEink(`[${reqId}] Creating template JSON`);
+    const templatePath = await createTemplateJson(inputPath, overlays, reqId);
     filesToClean.push(templatePath);
+    logEink(`[${reqId}] Template created: ${templatePath}`);
 
     const cfg = vscode.workspace.getConfiguration();
     const tunnelUrl = cfg.get<string>('pamir.eink.tunnelUrl') || 'http://localhost:8080';
-    const scriptPath = await createPythonScript('display', templatePath, tunnelUrl);
+    logEink(`[${reqId}] Using tunnel URL: ${tunnelUrl}`);
+    
+    logEink(`[${reqId}] Creating Python script`);
+    const scriptPath = await createPythonScript('display', templatePath, tunnelUrl, reqId);
     filesToClean.push(scriptPath);
+    logEink(`[${reqId}] Python script created: ${scriptPath}`);
 
-    await runPythonScript(scriptPath);
+    logEink(`[${reqId}] Executing Python script`);
+    await runPythonScript(scriptPath, reqId);
+    logEink(`[${reqId}] Python script completed successfully`);
 
+  } catch (error) {
+    logEink(`[${reqId}] ERROR in displayOnDevice: ${error}`);
+    logEink(`[${reqId}] Error details: ${(error as Error)?.stack || 'No stack trace'}`);
+    throw error;
   } finally {
     const cfg = vscode.workspace.getConfiguration();
     const debugMode = cfg.get<boolean>('pamir.eink.debugMode');
     if (debugMode) {
-      // Keep temp files for inspection
+      logEink(`[${reqId}] Debug mode enabled - keeping temp files: ${filesToClean.join(', ')}`);
     } else {
+      logEink(`[${reqId}] Cleaning up ${filesToClean.length} temp files`);
       for (const file of filesToClean) {
-        try { await fsp.unlink(file); } catch {}
+        try { 
+          await fsp.unlink(file); 
+          logEink(`[${reqId}] Deleted: ${file}`);
+        } catch (err) {
+          logEink(`[${reqId}] Failed to delete ${file}: ${err}`);
+        }
       }
     }
+    logEink(`[${reqId}] displayOnDevice cleanup completed`);
   }
 }
 
-async function runPythonScript(scriptPath: string): Promise<void> {
+async function runPythonScript(scriptPath: string, requestId?: number): Promise<void> {
+  const reqId = requestId || Date.now();
   const cfg = vscode.workspace.getConfiguration();
   const pythonPath = cfg.get<string>('pamir.eink.pythonPath') || '/opt/distiller-cm5-sdk/.venv/bin/python';
   const timeoutMs = cfg.get<number>('pamir.eink.timeoutMs') || 30000;
 
+  logEink(`[${reqId}] Starting Python execution: ${pythonPath} ${scriptPath}`);
+  logEink(`[${reqId}] Timeout set to: ${timeoutMs}ms`);
+
   return new Promise((resolve, reject) => {
+    const startTime = Date.now();
     const child = spawn(pythonPath, [scriptPath], {
       env: { ...process.env },
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
+    logEink(`[${reqId}] Python process spawned with PID: ${child.pid}`);
+
     let stdout = '';
     let stderr = '';
 
     const timeout = setTimeout(() => {
+      logEink(`[${reqId}] Python script TIMEOUT after ${timeoutMs}ms - killing process`);
       try { child.kill('SIGKILL'); } catch {}
       reject(new Error(`Python script timed out after ${timeoutMs}ms. Script: ${scriptPath}`));
     }, timeoutMs);
 
-    child.stdout.on('data', (d) => (stdout += d.toString()));
-    child.stderr.on('data', (d) => (stderr += d.toString()));
+    child.stdout.on('data', (d) => {
+      const data = d.toString();
+      stdout += data;
+      logEink(`[${reqId}] Python stdout: ${data.trim()}`);
+    });
+    
+    child.stderr.on('data', (d) => {
+      const data = d.toString();
+      stderr += data;
+      logEink(`[${reqId}] Python stderr: ${data.trim()}`);
+    });
 
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
+      const duration = Date.now() - startTime;
       clearTimeout(timeout);
+      
+      logEink(`[${reqId}] Python process exited with code ${code}, signal ${signal} after ${duration}ms`);
+      logEink(`[${reqId}] Final stdout length: ${stdout.length}`);
+      logEink(`[${reqId}] Final stderr length: ${stderr.length}`);
 
       if (stderr.includes('ERROR:')) {
+        logEink(`[${reqId}] ERROR detected in stderr`);
         const cfg = vscode.workspace.getConfiguration();
         if (cfg.get<boolean>('pamir.eink.debugMode')) {
-          console.error('[E-ink Debug] Python script:', scriptPath);
-          console.error('[E-ink Debug] Full stderr:', stderr);
-          console.error('[E-ink Debug] Full stdout:', stdout);
+          logEink(`[${reqId}] Debug mode - full Python script: ${scriptPath}`);
+          logEink(`[${reqId}] Debug mode - full stderr: ${stderr}`);
+          logEink(`[${reqId}] Debug mode - full stdout: ${stdout}`);
         }
         reject(new Error(`SDK error: ${stderr}`));
       } else if (code !== 0) {
+        logEink(`[${reqId}] Non-zero exit code: ${code}`);
         reject(new Error(`Python exited with code ${code}. Output: ${stdout}\nStderr: ${stderr}`));
       } else {
         if (stderr && !stderr.includes('UserWarning')) {
-          console.warn(`Python stderr (non-fatal): ${stderr}`);
+          logEink(`[${reqId}] Non-fatal stderr: ${stderr}`);
         }
+        logEink(`[${reqId}] Python execution completed successfully`);
         resolve();
       }
     });
 
     child.on('error', (err) => {
+      logEink(`[${reqId}] Python process error: ${err.message}`);
       clearTimeout(timeout);
       reject(new Error(`Failed to spawn Python at ${pythonPath}: ${err.message}`));
     });
