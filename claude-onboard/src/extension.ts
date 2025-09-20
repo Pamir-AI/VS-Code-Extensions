@@ -8,6 +8,9 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+const TRIAL_STATUS_RETRY_INTERVAL_MS = 5000;
+const TRIAL_STATUS_RETRY_ATTEMPTS = 6;
+
 // Types for distiller-update JSON responses
 interface Package {
 	name: string;
@@ -32,6 +35,7 @@ interface JobStatus {
 class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private _trialActive: boolean = false;
+	private _trialConfirmed: boolean = false;
 	private _isProcessing: boolean = false;
 	private _errorState: '404' | '500' | null = null;
 	private _showHelp: boolean = false;
@@ -44,6 +48,9 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _updateLogOutput: string = '';
 	private _updateUnit: string = '';
 	private _installRemaining: number = 0;
+	private _trialStatusSources: { env: boolean; settings: boolean } = { env: false, settings: false };
+	private _trialVerificationTimer: NodeJS.Timeout | undefined;
+	private _trialVerificationAttemptsRemaining: number = 0;
 	
 	// Test mode toggle
 
@@ -263,7 +270,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	public async checkTrialStatus(): Promise<void> {
+	public async checkTrialStatus(scheduleFollowUp: boolean = true): Promise<void> {
 		try {
 			// Check both environment file and settings.json
 			const envFile = '/etc/distiller-telemetry/environment';
@@ -291,16 +298,75 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				}
 			}
 
-			// Trial is active if both files have the tokens
-			this._trialActive = hasEnvToken && hasSettingsToken;
+			this._trialStatusSources = { env: hasEnvToken, settings: hasSettingsToken };
+			this._trialActive = hasEnvToken || hasSettingsToken;
+			this._trialConfirmed = hasEnvToken && hasSettingsToken;
 			
 			// Clear error state if trial is active
 			if (this._trialActive) {
 				this._errorState = null;
 			}
+
+			const needsFollowUp = this._trialActive && !this._trialConfirmed;
+			if (needsFollowUp) {
+				if (scheduleFollowUp) {
+					this.scheduleTrialVerification();
+				}
+			} else {
+				this.cancelTrialVerification();
+			}
 		} catch (error) {
 			console.error('Failed to check trial status:', error);
 			this._trialActive = false;
+			this._trialConfirmed = false;
+			this._trialStatusSources = { env: false, settings: false };
+			this.cancelTrialVerification();
+		}
+	}
+
+	private scheduleTrialVerification(): void {
+		if (this._trialConfirmed) {
+			return;
+		}
+
+		if (this._trialVerificationAttemptsRemaining <= 0) {
+			this._trialVerificationAttemptsRemaining = TRIAL_STATUS_RETRY_ATTEMPTS;
+		}
+
+		if (this._trialVerificationTimer) {
+			return;
+		}
+
+		this._trialVerificationTimer = setTimeout(() => this.runTrialVerification(), TRIAL_STATUS_RETRY_INTERVAL_MS);
+	}
+
+	private cancelTrialVerification(): void {
+		if (this._trialVerificationTimer) {
+			clearTimeout(this._trialVerificationTimer);
+			this._trialVerificationTimer = undefined;
+		}
+		this._trialVerificationAttemptsRemaining = 0;
+	}
+
+	private async runTrialVerification(): Promise<void> {
+		this._trialVerificationTimer = undefined;
+
+		if (this._trialConfirmed) {
+			this._trialVerificationAttemptsRemaining = 0;
+			return;
+		}
+
+		if (this._trialVerificationAttemptsRemaining <= 0) {
+			return;
+		}
+
+		this._trialVerificationAttemptsRemaining--;
+
+		await this.checkTrialStatus(false);
+		this.updateWebview();
+
+		if (!this._trialConfirmed && this._trialVerificationAttemptsRemaining > 0) {
+			this.scheduleTrialVerification();
 		}
 	}
 
@@ -395,6 +461,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 					await this.checkTrialStatus();
 					this._errorState = null;
 					vscode.window.showInformationMessage('Claude Code trial stopped successfully.');
+					vscode.window.showInformationMessage('Please restart your device for changes to take effect.');
 				} else {
 					vscode.window.showErrorMessage('Failed to stop trial. Please try again.');
 				}
@@ -1049,7 +1116,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getStateFromStatus(statusMeta: { label: string; className: string; detail: string }): string {
-		if (this._isProcessing) {
+		if (this._isProcessing || statusMeta.className === 'status-processing') {
 			return 'processing';
 		}
 		if (statusMeta.className === 'status-ok') {
@@ -1091,6 +1158,15 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				label: 'TRIAL EXPIRED',
 				className: 'status-error',
 				detail: 'Trial access has ended for this device.'
+			};
+		}
+
+		if (this._trialActive && !this._trialConfirmed) {
+			const sourceStatus = `env ${this._trialStatusSources.env ? 'ready' : 'pending'} / settings ${this._trialStatusSources.settings ? 'ready' : 'pending'}`;
+			return {
+				label: 'SYNCING',
+				className: 'status-processing',
+				detail: `Waiting for Claude credentials to finish provisioning (${sourceStatus}).`
 			};
 		}
 
