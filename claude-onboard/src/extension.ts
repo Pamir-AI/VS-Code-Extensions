@@ -1231,6 +1231,27 @@ interface Overlays {
   elements: OverlayElement[];
 }
 
+const CANVAS_WIDTH = 250;
+const CANVAS_HEIGHT = 128;
+const EDGE_PADDING = 6;
+const QR_DEFAULT_SIZE = 50;
+const MAX_IP_SAMPLE_LENGTH = '255.255.255.255'.length;
+const FONT_WIDTH = 6;
+const FONT_HEIGHT = 8;
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+function computeIpBox(element: OverlayElement) {
+  const rawPadding = Math.max(0, element.padding ?? 1);
+  const padding = element.background === false ? 0 : rawPadding;
+  const fontSize = Math.max(1, Math.round(element.font_size ?? 1));
+  const textWidth = MAX_IP_SAMPLE_LENGTH * FONT_WIDTH * fontSize;
+  const textHeight = FONT_HEIGHT * fontSize;
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = textHeight + padding * 2;
+  return { padding, fontSize, textWidth, textHeight, boxWidth, boxHeight };
+}
+
 // Create output channel for logging
 let einkOutputChannel: vscode.OutputChannel | undefined;
 
@@ -1362,48 +1383,63 @@ async function createTemplateJson(imagePath: string, overlays: Overlays, request
     height: null,
   });
 
-  const M = 10;
   for (const element of overlays.elements) {
     if (element.type === 'ip') {
-      const measuredW = Math.max(1, Math.floor(element.width ?? 46));
-      const measuredH = Math.max(1, Math.floor(element.height ?? 9));
-      const padding = Math.max(0, element.padding ?? 2);
-      const measuredWidthWithPad = measuredW + padding * 2;
-      const worstChars = 15;
-      const pxPerChar = 8;
-      const fudge = 1.15;
-      const worstCaseWidth = Math.round(worstChars * pxPerChar * fudge) + padding * 2;
-      const ipWidth = Math.min(250, Math.max(measuredWidthWithPad, worstCaseWidth));
-      const ipTopCore = Math.max(7, Math.ceil(measuredH * 0.78));
-      const ipBottomCore = Math.max(2, measuredH - ipTopCore);
-      const ipTopOffset = ipTopCore + padding;
-      const ipBottomOffset = ipBottomCore + padding;
-      const ipX = Math.max(M, Math.min(250 - ipWidth - M, element.x));
-      const minBaselineY = ipTopOffset + M;
-      const maxBaselineY = 128 - ipBottomOffset - M;
-      const ipY = Math.max(minBaselineY, Math.min(maxBaselineY, element.y));
+      const dims = computeIpBox(element);
+      const minX = EDGE_PADDING;
+      const maxX = Math.max(minX, CANVAS_WIDTH - dims.boxWidth - EDGE_PADDING);
+      const minY = EDGE_PADDING;
+      const maxY = Math.max(minY, CANVAS_HEIGHT - dims.boxHeight - EDGE_PADDING);
+      const ipX = clamp(element.x, minX, maxX);
+      const ipY = clamp(element.y, minY, maxY);
+      const textX = ipX + dims.padding;
+      const textY = ipY + dims.padding;
+
+      const includeBackground = element.background ?? true;
+      if (includeBackground) {
+        layers.push({
+          id: `${element.id}_background`,
+          type: 'rectangle',
+          visible: true,
+          x: ipX,
+          y: ipY,
+          width: Math.round(dims.boxWidth),
+          height: Math.round(dims.boxHeight),
+          filled: true,
+          color: 255,
+        });
+      }
 
       layers.push({
         id: element.id,
         type: 'text',
         visible: true,
-        x: ipX,
-        y: ipY,
+        x: Math.round(textX),
+        y: Math.round(textY),
         text: '$IP_ADDRESS',
         placeholder_type: 'ip',
-        color: element.color || 0,
-        font_size: Math.round((element.font_size || 1) * 1.1),
-        background: element.background || false,
-        padding,
+        color: element.color ?? 0,
+        font_size: Math.round((element.font_size ?? 1) * 1.1),
+        background: false,
+        padding: 0,
         rotate: 0,
         flip_h: false,
         flip_v: false,
+        width: Math.round(dims.textWidth),
+        height: Math.round(dims.textHeight),
+        box_width: Math.round(dims.boxWidth),
+        box_height: Math.round(dims.boxHeight),
+        box_padding: dims.padding,
       });
     } else if (element.type === 'qr') {
-      const qrWidth = element.width || 50;
-      const qrHeight = element.height || 50;
-      const qrX = Math.max(M, Math.min(250 - qrWidth - M, element.x));
-      const qrY = Math.max(M, Math.min(128 - qrHeight - M, element.y));
+      const qrWidth = element.width || QR_DEFAULT_SIZE;
+      const qrHeight = element.height || QR_DEFAULT_SIZE;
+      const minQrX = EDGE_PADDING;
+      const maxQrX = Math.max(minQrX, CANVAS_WIDTH - qrWidth - EDGE_PADDING);
+      const minQrY = EDGE_PADDING;
+      const maxQrY = Math.max(minQrY, CANVAS_HEIGHT - qrHeight - EDGE_PADDING);
+      const qrX = clamp(element.x, minQrX, maxQrX);
+      const qrY = clamp(element.y, minQrY, maxQrY);
 
       layers.push({
         id: element.id,
@@ -1413,8 +1449,8 @@ async function createTemplateJson(imagePath: string, overlays: Overlays, request
         y: qrY,
         text: '$QR_CODE',
         placeholder_type: 'qr',
-        width: element.width || 50,
-        height: element.height || 50,
+        width: qrWidth,
+        height: qrHeight,
         rotate: 0,
         flip_h: false,
         flip_v: false,
@@ -1426,8 +1462,8 @@ async function createTemplateJson(imagePath: string, overlays: Overlays, request
     template_version: '1.0',
     name: `preview_${timestamp}`,
     created,
-    width: 250,
-    height: 128,
+    width: CANVAS_WIDTH,
+    height: CANVAS_HEIGHT,
     layers,
   };
 
@@ -1454,9 +1490,15 @@ async function createPythonScript(operation: 'preview' | 'display', templatePath
 import sys
 from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
 
+MAX_IP_LEN = 15
+
+def center_ip(ip: str) -> str:
+    return ip.center(MAX_IP_LEN)
+
 try:
     renderer = TemplateRenderer("${templatePath}")
-    renderer.render_and_save('127.0.0.1', '${tunnelUrl}', '${outputPath}')
+    centered_ip = center_ip('127.0.0.1')
+    renderer.render_and_save(centered_ip, '${tunnelUrl}', '${outputPath}')
     print("Preview rendered successfully")
 except Exception as e:
     print(f"ERROR: {e}", file=sys.stderr)
@@ -1503,14 +1545,21 @@ except ImportError as e:
     print(f"ERROR: Failed to import TemplateRenderer: {e}", file=sys.stderr)
     sys.exit(1)
 
+MAX_IP_LEN = 15
+
+def center_ip(ip: str) -> str:
+    return ip.center(MAX_IP_LEN)
+
 try:
     print(f"[SCRIPT] Getting device IP address...", file=sys.stderr)
     # Get device IP
     result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
     ip = result.stdout.split()[0] if result.stdout else '127.0.0.1'
+    centered_ip = center_ip(ip)
     print(f"[SCRIPT] Using IP: {ip}", file=sys.stderr)
+    print(f"[SCRIPT] Padded IP for centering: '{centered_ip}'", file=sys.stderr)
     print(f"[SCRIPT] Using tunnel URL: ${tunnelUrl}", file=sys.stderr)
-    
+
     print(f"[SCRIPT] Creating TemplateRenderer instance...", file=sys.stderr)
     renderer = TemplateRenderer("${templatePath}")
     print(f"[SCRIPT] TemplateRenderer created successfully", file=sys.stderr)
@@ -1518,7 +1567,7 @@ try:
     print(f"[SCRIPT] Starting render_and_display...", file=sys.stderr)
     start_time = time.time()
     try:
-        renderer.render_and_display(ip, '${tunnelUrl}')
+        renderer.render_and_display(centered_ip, '${tunnelUrl}')
         end_time = time.time()
         print(f"[SCRIPT] render_and_display completed in {end_time - start_time:.2f} seconds", file=sys.stderr)
     except UnboundLocalError as e:
