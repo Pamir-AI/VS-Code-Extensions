@@ -492,7 +492,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		this.updateWebview();
 
 		try {
-			const { stdout } = await execAsync('distiller-update list --json --refresh');
+			const { stdout } = await execAsync('sudo distiller-update list --json --refresh');
 			const result: ListResponse = JSON.parse(stdout);
 			
 			this._availableUpdates = result.packages;
@@ -597,7 +597,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 
 				// Refresh remaining count by polling the list
 				try {
-					const { stdout: listOut } = await execAsync('distiller-update list --json');
+					const { stdout: listOut } = await execAsync('sudo distiller-update list --json');
 					const list = JSON.parse(listOut);
 						this._installRemaining = Array.isArray(list?.packages) ? list.packages.length : 0;
 						if (Array.isArray(list?.packages)) {
@@ -617,7 +617,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 					this._isProcessing = false;
 					if (code === 0 && sub !== 'failed') {
 						vscode.window.showInformationMessage('Pamir system update completed successfully!');
-						try { await execAsync('distiller-update list --json'); } catch {}
 						this._hasCheckedUpdates = false;
 						this._availableUpdates = [];
 						this._updateStatus = '';
