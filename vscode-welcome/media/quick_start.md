@@ -9,56 +9,39 @@ This page walks you through connecting Claude, Cursor, and OpenAI Codex to your 
 
 ## Change the Default Password
 
-Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open `/opt/claude-code-web-manager/config/production.json` directly in VS Code. Update the password value, press save, and your changes will apply the next time you log in.
+Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open /opt/claude-code-web-manager/config/production.json directly in VS Code. Update the password value, press save, and your changes will apply the next time you boot the device.
 
 ---
 
-## 1) Connect AI Services
+## 1) Connect AI IDE Services
 
 ### Claude (Claude Code CLI)
 
-1. Toggle the Claude proxy on/off in Settings.   
+The device comes with a Claude account activated (lasts until we can’t afford it). You can toggle our Claude account on/off in Settings.
    ![Settings → Claude proxy toggle](./images/claude-proxy-toggle.png)
 
-2. Log in from the terminal:
-   ```bash
-   # If your CLI is named "claude"
-   claude /login
-   ```
-
-Follow the prompts to complete authentication.
+> If you want to use the Claude Code VS Code extension, you’ll need to sign in with your own account.
 
 ---
 
-### OpenAI Codex (Headless Login Workaround)
+### OpenAI Codex Extension
 
-Known issue: [https://github.com/openai/codex/issues/2798](https://github.com/openai/codex/issues/2798)
+The device doesn’t include an OpenAI account, so you’ll need to sign in with your own.
 
-**Option 1 — Copy existing auth from your computer**
-> If you are using windows just use **option 2** below
+For extension or CLI theres a login known issue: [https://github.com/openai/codex/issues/2798](https://github.com/openai/codex/issues/2798)
 
-> Replace `DEVICE_IP` with your device’s IP. Default password is `one`.
+**Login via Distiller Web UI with port forwarding**
+1. Click on the Codex Icon ![Codex Icon](./images/codex-step1.png)
+2. Click **Sign in with ChatGPT**.
+3. Follow the pop-up window to login ![Login Popup](./images/codex-step3.png)
+4. You’ll land on a **“This site can’t be reached”** page after login. This is expected. ![Error Page 1](./images/codex-step4.png)
+5. Go back to your VS Code page, click **PORTS**, and you should see port **1455**. (If you don’t, click **Add Port**, enter **1455**, then press **Enter**.) ![Port Check](./images/codex-step5.png)
+6. Click the tiny copy icon to copy the **forwarded address**.  ![Copy Addr](./images/codex-step6.png)
+7. Return to the **“This site can’t be reached”** Codex login page. Replace http://localhost:1455/ with the copied **forwarded address**, hit **Enter**. It will redirects to http://localhost:1455/success/*, replace the same http://localhost:1455 part with the **forwarded address** again and hit Enter. 
 
-```bash
-# Run on your own computer (not on the device)
-ssh distiller@DEVICE_IP 'mkdir -p ~/.codex'   # password: one
-scp ~/.codex/auth.json distiller@DEVICE_IP:~/.codex/auth.json
-```
-
-**Option 2 — Login via Distiller Web UI with port forwarding**
-
-1. In the Distiller Web UI, click **Add Port**, enter `1455`, then press **Enter** (ignore if 1455 already been ported).
-   ![Add Port: 1455](./images/add-port-1455.png)
-
-2. Start the normal Codex login flow. When redirected to:
-
-   * `http://localhost:1455/auth/*`
-   * `http://localhost:1455/success/*`
-
-   Replace `localhost:1455` with the forwarded address shown in your Ports table, then hit enter.
-   ![Ports table showing forwarded URL](./images/ports-table.png)
-
-   Continue the flow as usual.
+> ![Codex link 1](./images/codex-step7.png)
+> ![Codex link 2](./images/codex-step8.png)
+You should be good to go!
 
 ---
 
@@ -74,15 +57,18 @@ cursor-agent
 
 ## 2) ESP32 Tutorials
 
-Navigate to the sample project and run Claude:
+To start with some fun ! 
+Navigate to the sample project ![Sample Nav](./images/nav-project.png)
 
-you can run it in terminal 
+once you are in the project window, 
+run in terminal 
+
+
 ```bash
-cd ~/project/esp32-agent-example && claude
-```
-or just click their extension button ![claude logo pic](./images/claude_logo.png)
+claude
+``` 
 
-Example prompt:
+Example prompt to use:
 > **create a cool rainbow 8x8 animation on my esp32, and upload it for me**
 
 > It might ask for you help downloading stuff, help it, first time building the project might take longer time due to initialization and tool preparation.
