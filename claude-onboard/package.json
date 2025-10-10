@@ -2,7 +2,7 @@
   "name": "device-manager",
   "displayName": "Device Manager",
   "description": "An extension to start/stop their claude code trail on demand",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "engines": {
     "vscode": "^1.103.0"
   },
