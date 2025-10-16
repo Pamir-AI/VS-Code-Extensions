@@ -144,7 +144,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       }
 
       const uri = vscode.Uri.file(item.session.cwd);
-      await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: false });
+      await vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: true });
     })
   );
 

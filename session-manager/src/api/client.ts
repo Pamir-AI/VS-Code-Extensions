@@ -112,4 +112,65 @@ export class HappyApiClient {
       throw new Error(`Cannot resume session ${claudeSessionId}`);
     }
   }
+
+  /**
+   * Clear Happy metadata from a session (detach from mobile)
+   * Uses upsert endpoint to explicitly set happySessionId and happySessionTag to null
+   * POST /v1/local-sessions
+   */
+  async clearHappyMetadata(claudeSessionId: string): Promise<void> {
+    try {
+      await this.client.post('/v1/local-sessions', {
+        claudeSessionId,
+        happySessionId: null,
+        happySessionTag: null,
+      });
+    } catch (error: any) {
+      console.error('Failed to clear Happy metadata:', error.message);
+      throw new Error(`Cannot detach session ${claudeSessionId} from Happy`);
+    }
+  }
+
+  /**
+   * Get a single session by ID
+   * GET /v1/local-sessions?claudeSessionId=xxx
+   */
+  async getSession(claudeSessionId: string): Promise<LocalSession | null> {
+    try {
+      const sessions = await this.listSessions({ claudeSessionId, limit: 1 });
+      return sessions.length > 0 ? sessions[0] : null;
+    } catch (error: any) {
+      console.error('Failed to fetch session:', error.message);
+      throw new Error(`Cannot fetch session ${claudeSessionId}`);
+    }
+  }
+
+  /**
+   * Poll session until a condition is met or timeout occurs
+   */
+  async pollSession(
+    claudeSessionId: string,
+    predicate: (session: LocalSession) => boolean,
+    options: { timeout?: number; interval?: number } = {}
+  ): Promise<LocalSession> {
+    const timeout = options.timeout || 10000;
+    const interval = options.interval || 500;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const session = await this.getSession(claudeSessionId);
+
+      if (!session) {
+        throw new Error(`Session ${claudeSessionId} not found`);
+      }
+
+      if (predicate(session)) {
+        return session;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+
+    throw new Error(`Polling timeout after ${timeout}ms`);
+  }
 }

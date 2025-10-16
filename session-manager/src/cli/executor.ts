@@ -40,62 +40,115 @@ export class HappyCliExecutor {
   }
 
   /**
-   * Resume session via Happy API (creates mobile-connected session)
+   * Resume session in integrated terminal
+   * For Happy sessions: kills active session on phone first, then resumes locally
+   * For vanilla sessions: resumes directly
+   * Always uses `claude` CLI to run locally in terminal (not happy CLI which forces remote mode)
    */
   async resumeSessionInTerminal(session: LocalSession): Promise<void> {
-    try {
-      // Use Happy's resume API for mobile integration
-      await this.apiClient.resumeSession(session.claudeSessionId);
-      vscode.window.showInformationMessage(
-        `Resuming session ${session.claudeSessionId.slice(0, 8)} via Happy. Check your mobile device.`
-      );
-    } catch (error: any) {
-      // Fallback to vanilla Claude resume if Happy API fails
-      vscode.window.showWarningMessage(
-        `Happy resume failed: ${error.message}. Falling back to vanilla Claude.`
-      );
+    const sessionIdShort = session.claudeSessionId.slice(0, 8);
+    const isHappySession = !!session.happySessionId;
+    const isActive = session.status === 'active' || session.status === 'happy-active';
 
-      const terminal = vscode.window.createTerminal({
-        name: `Claude ${session.claudeSessionId.slice(0, 8)}`,
-        cwd: session.cwd || undefined,
-      });
+    // If it's an active Happy session, kill it first
+    if (isHappySession && isActive && session.pid) {
+      try {
+        vscode.window.showInformationMessage(
+          `Moving session ${sessionIdShort} from phone to VS Code...`
+        );
 
-      terminal.sendText(`claude --resume ${session.claudeSessionId}`);
-      terminal.show();
+        await this.killSessionSilently(session);
+
+        vscode.window.showInformationMessage(
+          `Session ${sessionIdShort} terminated. Ready to resume locally.`
+        );
+      } catch (error: any) {
+        vscode.window.showWarningMessage(
+          `Failed to kill active session: ${error.message}. Attempting to resume anyway.`
+        );
+      }
     }
+
+    // Create terminal for resume
+    const terminal = vscode.window.createTerminal({
+      name: `Claude ${sessionIdShort}`,
+      cwd: session.cwd || undefined,
+    });
+
+    // Always use vanilla Claude CLI to run locally in terminal
+    // (happy CLI forces remote/daemon mode which isn't what we want here)
+    terminal.sendText(`claude --resume ${session.claudeSessionId}`);
+    terminal.show();
+
+    vscode.window.showInformationMessage(
+      `Resuming session ${sessionIdShort} in terminal`
+    );
   }
 
   /**
-   * Kill a session by terminating its process using Happy API
+   * Kill session silently (no user confirmation or messages)
+   * Used internally when switching session location
+   *
+   * Complete flow to move Happy session to local terminal:
+   * 1. Kill phone process with targetPid
+   * 2. Poll until PID is cleared
+   * 3. Clear Happy metadata (happySessionId, happySessionTag) via upsert
+   * 4. Now ready for vanilla claude resume in terminal
+   */
+  private async killSessionSilently(session: LocalSession): Promise<void> {
+    const targetPid = session.pid;
+    if (!targetPid) {
+      throw new Error('Session has no PID to kill');
+    }
+
+    // Step 1: Kill the specific PID using Happy API
+    await this.apiClient.killSession(session.claudeSessionId, {
+      signal: 'term',
+      targetPid: targetPid
+    });
+
+    // Step 2: Poll until session PID is cleared
+    await this.apiClient.pollSession(
+      session.claudeSessionId,
+      (s) => s.pid === null || s.status === 'terminated',
+      { timeout: 10000, interval: 500 }
+    );
+
+    // Step 3: Clear Happy metadata so vanilla claude doesn't inherit phone linkage
+    await this.apiClient.clearHappyMetadata(session.claudeSessionId);
+  }
+
+  /**
+   * Kill a session by terminating its process
+   * Uses same logic as resume button for consistency:
+   * 1. Kill with targetPid
+   * 2. Poll until PID cleared
+   * 3. Clear Happy metadata if it's a Happy session
    */
   async killSession(session: LocalSession): Promise<void> {
     if (!session.pid) {
       throw new Error('Session has no PID');
     }
 
-    try {
-      // Use Happy API for better error handling
-      await this.apiClient.killSession(session.claudeSessionId, { signal: 'term' });
-    } catch (error: any) {
-      // Fallback to CLI if API fails and CLI is available
-      if (this.cliPath) {
-        vscode.window.showWarningMessage(
-          `API kill failed: ${error.message}. Trying CLI fallback.`
-        );
+    const targetPid = session.pid;
+    const isHappySession = !!session.happySessionId;
 
-        const terminal = vscode.window.createTerminal({
-          name: `Kill ${session.claudeSessionId.slice(0, 8)}`,
-          cwd: session.cwd || undefined,
-        });
+    // Step 1: Kill the specific PID using Happy API
+    await this.apiClient.killSession(session.claudeSessionId, {
+      signal: 'term',
+      targetPid: targetPid
+    });
 
-        terminal.sendText(
-          `node "${this.cliPath}" sessions kill ${session.claudeSessionId}`
-        );
+    // Step 2: Poll until session PID is cleared
+    await this.apiClient.pollSession(
+      session.claudeSessionId,
+      (s) => s.pid === null || s.status === 'terminated',
+      { timeout: 10000, interval: 500 }
+    );
 
-        setTimeout(() => terminal.dispose(), 2000);
-      } else {
-        throw error;
-      }
+    // Step 3: If it was a Happy session, clear metadata for consistency
+    if (isHappySession) {
+      await this.apiClient.clearHappyMetadata(session.claudeSessionId);
     }
   }
 

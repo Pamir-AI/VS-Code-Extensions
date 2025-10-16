@@ -2,13 +2,17 @@
   "name": "happy-session-manager",
   "displayName": "Happy Session Manager",
   "description": "Manage Happy Claude sessions from VS Code",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publisher": "pamir-ai",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
     "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -36,8 +40,8 @@
       "activitybar": [
         {
           "id": "happy-sessions-container",
-          "title": "Happy Sessions",
-          "icon": "resources/icon.svg"
+          "title": "Session Manager",
+          "icon": "$(layers)"
         }
       ]
     },
@@ -45,8 +49,8 @@
       "happy-sessions-container": [
         {
           "id": "happySessions",
-          "name": "Claude Sessions",
-          "icon": "resources/icon.svg"
+          "name": "Active Sessions",
+          "icon": "$(layers)"
         }
       ]
     },

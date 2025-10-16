@@ -1,6 +1,7 @@
 {
   "name": "device-manager",
   "displayName": "Device Manager",
+  "publisher": "pamir-ai",
   "description": "An extension to start/stop their claude code trail on demand",
   "version": "0.0.8",
   "engines": {

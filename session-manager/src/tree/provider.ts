@@ -220,7 +220,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<TreeElement>
         const dirItem = new DirectoryTreeItem(
           dirPath,
           dirSessions,
-          vscode.TreeItemCollapsibleState.Collapsed
+          vscode.TreeItemCollapsibleState.Expanded
         );
 
         // Store timestamp for sorting
