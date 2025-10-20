@@ -79,6 +79,10 @@ function openWelcome(ctx: vscode.ExtensionContext) {
     }
   );
 
+  // Set icon for the editor tab
+  const iconPath = vscode.Uri.joinPath(ctx.extensionUri, 'icon.png');
+  panel.iconPath = iconPath;
+
   panel.webview.html = getHtml(panel.webview, ctx.extensionUri);
 
   panel.webview.onDidReceiveMessage(async (msg) => {

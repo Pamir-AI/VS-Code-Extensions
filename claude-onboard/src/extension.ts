@@ -48,6 +48,10 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _updateLogOutput: string = '';
 	private _updateUnit: string = '';
 	private _installRemaining: number = 0;
+	private _initialUpdateCount: number = 0;
+	private _completedPackages: Set<string> = new Set();
+	private _currentPackage: string = '';
+	private _lastLogFetch: Date | null = null;
 	private _trialStatusSources: { env: boolean; settings: boolean } = { env: false, settings: false };
 	private _trialVerificationTimer: NodeJS.Timeout | undefined;
 	private _trialVerificationAttemptsRemaining: number = 0;
@@ -492,7 +496,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		this.updateWebview();
 
 		try {
-			const { stdout } = await execAsync('distiller-update list --json --refresh');
+			const { stdout } = await execAsync('sudo distiller-update list --json --refresh');
 			const result: ListResponse = JSON.parse(stdout);
 			
 			this._availableUpdates = result.packages;
@@ -556,6 +560,10 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
             this._updateDetails = 'Starting Pamir system update...';
             this._updateLogOutput = '';
             this._updateUnit = '';
+            this._initialUpdateCount = this._availableUpdates.length;
+            this._completedPackages.clear();
+            this._currentPackage = '';
+            this._lastLogFetch = null;
             this.updateWebview();
 
             const jobId = Date.now().toString();
@@ -589,35 +597,59 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				const code = parseInt(codeMatch?.[1] ?? '0', 10);
 				this._updateUnit = unit;
 
+				// Fetch and parse logs for progress tracking
+				try {
+					// Only fetch new logs since last check
+					const since = this._lastLogFetch
+						? this._lastLogFetch.toISOString()
+						: '10 seconds ago';
+					const { stdout: logs } = await execAsync(`journalctl -u ${unit} --no-pager --since="${since}"`);
+					this._lastLogFetch = new Date();
+
+					// Parse for completed packages: "Setting up <package> (<version>) ..."
+					const setupRegex = /Setting up ([a-z0-9][a-z0-9+.-]+) \(/g;
+					let match;
+					let lastPackage = '';
+					while ((match = setupRegex.exec(logs)) !== null) {
+						this._completedPackages.add(match[1]);
+						lastPackage = match[1];
+					}
+
+					// Track currently installing package
+					if (lastPackage) {
+						this._currentPackage = lastPackage;
+					}
+
+					// Calculate progress
+					const completed = this._completedPackages.size;
+					const total = this._initialUpdateCount;
+					this._installRemaining = Math.max(0, total - completed);
+
+					// Keep last few lines for optional detailed view
+					const lines = logs.split('\n').filter(l => l.trim());
+					if (lines.length > 0) {
+						this._updateLogOutput = lines.slice(-12).join('\n');
+					}
+				} catch {}
+
 				// Update basic status
 				this._updateStatus = sub || 'running';
-				this._updateDetails = sub === 'running'
-					? (this._installRemaining > 0 ? `Installing updates… Remaining: ${this._installRemaining}` : 'Installing updates')
-					: `Status: ${sub}`;
-
-				// Refresh remaining count by polling the list
-				try {
-					const { stdout: listOut } = await execAsync('distiller-update list --json');
-					const list = JSON.parse(listOut);
-						this._installRemaining = Array.isArray(list?.packages) ? list.packages.length : 0;
-						if (Array.isArray(list?.packages)) {
-							this._availableUpdates = list.packages;
-						}
-				} catch {}
-
-				// Tail last few lines of logs for context
-				try {
-					const { stdout: logs } = await execAsync(`journalctl -u ${unit} --no-pager -n 40`);
-					const lines = logs.split('\n').filter(l => l.trim());
-					this._updateLogOutput = lines.slice(-12).join('\n');
-				} catch {}
+				if (sub === 'running') {
+					if (this._initialUpdateCount > 0) {
+						const current = this._currentPackage ? ` (${this._currentPackage})` : '';
+						this._updateDetails = `Installing ${this._completedPackages.size}/${this._initialUpdateCount} packages${current}`;
+					} else {
+						this._updateDetails = 'Installing updates';
+					}
+				} else {
+					this._updateDetails = `Status: ${sub}`;
+				}
 
 				// Completion paths
 				if (sub === 'dead' || sub === 'exited' || sub === 'failed') {
 					this._isProcessing = false;
 					if (code === 0 && sub !== 'failed') {
 						vscode.window.showInformationMessage('Pamir system update completed successfully!');
-						try { await execAsync('distiller-update list --json'); } catch {}
 						this._hasCheckedUpdates = false;
 						this._availableUpdates = [];
 						this._updateStatus = '';
@@ -625,6 +657,10 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 						this._updateLogOutput = '';
 						this._updateUnit = '';
 						this._installRemaining = 0;
+						this._initialUpdateCount = 0;
+						this._completedPackages.clear();
+						this._currentPackage = '';
+						this._lastLogFetch = null;
 						this.updateWebview();
 						return;
 					} else {
@@ -734,9 +770,25 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			: '';
 
 		let updateDetails = '';
-		if (this._isProcessing && (this._updateStatus || this._updateDetails)) {
+
+		// Show progress bar if update is running
+		if (this._isProcessing && this._initialUpdateCount > 0) {
+			const completed = this._completedPackages.size;
+			const total = this._initialUpdateCount;
+			const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+			updateDetails += `
+				<div class="progress-container">
+					<div class="progress-label">${this._updateDetails || 'Installing updates...'}</div>
+					<div class="progress-bar">
+						<div class="progress-fill" style="width: ${percent}%"></div>
+					</div>
+					<div class="progress-text">${completed}/${total} packages (${percent}%)</div>
+				</div>
+			`;
+		} else if (this._isProcessing && (this._updateStatus || this._updateDetails)) {
 			updateDetails += `<div class="notice">${this._updateDetails || 'Processing system update…'}</div>`;
 		}
+
 		if (!this._isProcessing && this._updateStatus === 'timeout') {
 			updateDetails += `<div class="notice warning">${this._updateDetails || 'Update process timed out. Use journalctl to inspect logs.'}</div>`;
 		}
@@ -754,10 +806,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				updateDetails += `<div class="notice">System is up to date.</div>`;
 			}
 		}
-
-		const updateLogBlock = this._updateLogOutput
-			? `<pre class="log-block">${this._updateLogOutput}</pre>`
-			: '';
 
 		const helpPanel = `
 			<div class="help-panel">
@@ -944,6 +992,39 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				.update-list { margin:6px 0 0; padding-left:18px; font-size:12px; color:var(--muted); }
 				.update-list li { margin:3px 0; }
 
+				.progress-container {
+					margin-top: 14px;
+					padding: 12px;
+					border-radius: var(--radius);
+					border: 1px solid var(--hair);
+					background: var(--surface);
+				}
+				.progress-label {
+					font-size: 12px;
+					color: var(--teal);
+					margin-bottom: 8px;
+					font-weight: 600;
+				}
+				.progress-bar {
+					width: 100%;
+					height: 8px;
+					background: color-mix(in srgb, var(--teal) 20%, var(--surface));
+					border-radius: 999px;
+					overflow: hidden;
+					margin-bottom: 6px;
+				}
+				.progress-fill {
+					height: 100%;
+					background: var(--teal);
+					transition: width 0.3s ease;
+					border-radius: 999px;
+				}
+				.progress-text {
+					font-size: 11px;
+					color: var(--muted);
+					text-align: center;
+				}
+
 				.log-block {
 					margin-top:12px;
 					background:rgba(0,0,0,0.5);
@@ -1056,7 +1137,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 							<h3 class="h">DEVICE TOOLS</h3>
 							${toolButtonsMarkup}
 							${updateDetails}
-							${updateLogBlock}
 						</div>
 					</section>
 
