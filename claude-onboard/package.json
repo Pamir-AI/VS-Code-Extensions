@@ -3,7 +3,25 @@
   "displayName": "Device Manager",
   "publisher": "pamir-ai",
   "description": "An extension to start/stop their claude code trail on demand",
-  "version": "0.0.8",
+  "version": "1.0.1",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions"
+  },
+  "bugs": {
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions/issues"
+  },
+  "homepage": "https://github.com/Pamir-AI/VS-Code-Extensions#readme",
+  "keywords": [
+    "device",
+    "trial",
+    "distiller",
+    "cm5",
+    "eink",
+    "updates",
+    "onboarding"
+  ],
   "engines": {
     "vscode": "^1.103.0"
   },
@@ -98,5 +116,12 @@
     "typescript": "^5.9.2",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2"
-  }
+  },
+  "files": [
+    "dist/**",
+    "icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
 }

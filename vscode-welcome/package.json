@@ -2,9 +2,26 @@
   "name": "pamir-welcome",
   "displayName": "Pamir Welcome & Layout",
   "publisher": "pamir-ai",
-  "version": "0.5.1",
+  "version": "1.0.1",
   "description": "Custom Pamir landing page and actions for Distiller CM5 dev",
   "icon": "icon.png",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions"
+  },
+  "bugs": {
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions/issues"
+  },
+  "homepage": "https://github.com/Pamir-AI/VS-Code-Extensions#readme",
+  "keywords": [
+    "welcome",
+    "pamir",
+    "distiller",
+    "cm5",
+    "onboarding",
+    "starter"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -53,7 +70,10 @@
     "out/**",
     "media/**",
     "package.json",
-    "icon.png"
+    "icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --outfile=out/extension.js --external:vscode",

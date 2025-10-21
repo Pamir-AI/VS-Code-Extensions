@@ -44,7 +44,10 @@ export class SessionTreeItem extends vscode.TreeItem {
     this.tooltip = this.createTooltip();
     this.description = this.createDescription();
     this.iconPath = this.getStatusIcon();
-    this.contextValue = 'session';
+
+    // Set context value based on AI type - Codex sessions are read-only
+    const isCodex = session.aiType?.toLowerCase() === 'codex';
+    this.contextValue = isCodex ? 'codexSession' : 'session';
 
     // Store session ID for commands
     this.id = session.claudeSessionId;

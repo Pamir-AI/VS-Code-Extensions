@@ -2,9 +2,27 @@
   "name": "happy-session-manager",
   "displayName": "Happy Session Manager",
   "description": "Manage Happy Claude sessions from VS Code",
-  "version": "0.3.0",
+  "version": "1.0.1",
   "publisher": "pamir-ai",
   "icon": "icon.png",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions"
+  },
+  "bugs": {
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions/issues"
+  },
+  "homepage": "https://github.com/Pamir-AI/VS-Code-Extensions#readme",
+  "keywords": [
+    "claude",
+    "sessions",
+    "happy",
+    "ai",
+    "assistant",
+    "codex",
+    "session-manager"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -102,22 +120,22 @@
         },
         {
           "command": "happySessions.previewTranscript",
-          "when": "view == happySessions && viewItem == session",
+          "when": "view == happySessions && (viewItem == session || viewItem == codexSession)",
           "group": "1_actions"
         },
         {
           "command": "happySessions.openDirectory",
-          "when": "view == happySessions && viewItem == session",
+          "when": "view == happySessions && (viewItem == session || viewItem == codexSession)",
           "group": "1_actions"
         },
         {
           "command": "happySessions.copySessionId",
-          "when": "view == happySessions && viewItem == session",
+          "when": "view == happySessions && (viewItem == session || viewItem == codexSession)",
           "group": "2_clipboard"
         },
         {
           "command": "happySessions.killSession",
-          "when": "view == happySessions && viewItem == session",
+          "when": "view == happySessions && (viewItem == session || viewItem == codexSession)",
           "group": "3_danger"
         }
       ]
@@ -153,5 +171,12 @@
   "dependencies": {
     "axios": "^1.12.2",
     "zod": "^4.1.11"
-  }
+  },
+  "files": [
+    "dist/**",
+    "icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
 }
