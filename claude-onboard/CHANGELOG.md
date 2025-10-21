@@ -1,10 +1,37 @@
 # Change Log
 
-All notable changes to the "claude-onboard" extension will be documented in this file.
+All notable changes to the "device-manager" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [1.0.1] - 2025-10-17
 
-## [Unreleased]
+### Fixed
+- Corrected repository URL to use proper GitHub organization casing (Pamir-AI/VS-Code-Extensions)
+
+## [1.0.0] - 2025-10-17
+
+### Release
+- **Open VSX Marketplace Release**: First stable release published to Open VSX marketplace
+- **Apache 2.0 License**: Project licensed under Apache License 2.0
+- **Repository Metadata**: Added repository, bugs, and homepage URLs
+- **Comprehensive Documentation**: Professional README with installation, usage, and troubleshooting guides
+
+### Highlights
+- Claude Code trial management with real-time verification
+- System update checking and installation via distiller-update
+- E-ink wallpaper designer with QR code generation
+- Device information display (MAC, IP)
+- Project creation and navigation shortcuts
+- Trial verification with automatic retry mechanism
+- Update progress monitoring with systemd journal integration
+
+## [0.0.8] - Prior Release
+
+### Features
+- Trial start/stop functionality
+- System update integration
+- E-ink wallpaper designer
+- Device information dashboard
+- Project management shortcuts
 
 ## [0.0.6] - 2025-09-17
 - Fixed alpha/transparent image processing by adding white background before processing for e-ink display

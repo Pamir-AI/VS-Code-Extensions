@@ -2,6 +2,26 @@
 
 All notable changes to the "session-manager" extension will be documented in this file.
 
+## [1.0.1] - 2025-10-17
+
+### Fixed
+- Corrected repository URL to use proper GitHub organization casing (Pamir-AI/VS-Code-Extensions)
+
+## [1.0.0] - 2025-10-17
+
+### Release
+- **Open VSX Marketplace Release**: First stable release published to Open VSX marketplace
+- **Apache 2.0 License**: Project licensed under Apache License 2.0
+- **Repository Metadata**: Added repository, bugs, and homepage URLs
+- **Comprehensive Documentation**: Professional README with installation, usage, and troubleshooting guides
+
+### Highlights
+- Manage Claude Code and Codex sessions from VS Code
+- Seamless phone-to-desktop session migration
+- Real-time status monitoring with auto-refresh
+- Session transcript preview and directory navigation
+- Smart session cleanup with metadata management
+
 ## [0.3.0] - 2025-10-16
 
 ### Changed
