@@ -3,7 +3,7 @@
   "displayName": "Device Manager",
   "publisher": "pamir-ai",
   "description": "An extension to start/stop their claude code trail on demand",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -119,6 +119,7 @@
   },
   "files": [
     "dist/**",
+    "src/eink-webview.html",
     "icon.png",
     "README.md",
     "CHANGELOG.md",
