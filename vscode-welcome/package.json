@@ -2,7 +2,7 @@
   "name": "pamir-welcome",
   "displayName": "Pamir Welcome & Layout",
   "publisher": "pamir-ai",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Custom Pamir landing page and actions for Distiller CM5 dev",
   "icon": "icon.png",
   "license": "Apache-2.0",
@@ -77,7 +77,7 @@
   ],
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --outfile=out/extension.js --external:vscode",
-    "package": "vsce package"
+    "package": "npm run build && vsce package"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
