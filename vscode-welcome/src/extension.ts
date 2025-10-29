@@ -34,7 +34,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('pamir.openPasswordConfig', async () => {
       try {
-        const configUri = vscode.Uri.file('/opt/claude-code-web-manager/config/production.json');
+        const configUri = vscode.Uri.file('/etc/claude-code-web-manager/default.json');
         const doc = await vscode.workspace.openTextDocument(configUri);
         await vscode.window.showTextDocument(doc, { preview: false });
       } catch (err) {

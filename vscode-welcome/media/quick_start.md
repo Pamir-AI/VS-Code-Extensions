@@ -9,7 +9,7 @@ This page walks you through connecting Claude, Cursor, and OpenAI Codex to your 
 
 ## Change the Default Password
 
-Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open /opt/claude-code-web-manager/config/production.json directly in VS Code. Update the password value, press save, and your changes will apply the next time you boot the device.
+Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open /etc/claude-code-web-manager/default.json directly in VS Code. Update the password value, press save, and your changes will apply the next time you boot the device.
 
 ---
 
@@ -82,27 +82,27 @@ Claude should generate code, install toolchains, and flash the ESP32-S3. It will
 
 ## 3) SDK & Minimal Examples
 
-For full docs, see: `/opt/distiller-cm5-sdk/README.md`
+For full docs, see: `/opt/distiller-sdk/README.md`
 
 ### Environment Setup
 
 ```bash
 # One-time per shell
 export PYTHONPATH="/opt/distiller-cm5-sdk:${PYTHONPATH}"
-export LD_LIBRARY_PATH="/opt/distiller-cm5-sdk/lib:${LD_LIBRARY_PATH}"
-source /opt/distiller-cm5-sdk/.venv/bin/activate
+export LD_LIBRARY_PATH="/opt/distiller-sdk/lib:${LD_LIBRARY_PATH}"
+source /opt/distiller-sdk/.venv/bin/activate
 ```
 
 Or call Python directly:
 
 ```bash
-/opt/distiller-cm5-sdk/.venv/bin/python
+/opt/distiller-sdk/.venv/bin/python
 ```
 
 ### E-ink (auto-scale + dither)
 
 ```python
-from distiller_cm5_sdk.hardware.eink import Display, DisplayMode
+from distiller_sdk.hardware.eink import Display, DisplayMode
 
 with Display() as d:
     d.display_png_auto("/path/to/image.png", DisplayMode.FULL)
@@ -111,7 +111,7 @@ with Display() as d:
 ### Camera (capture to file)
 
 ```python
-from distiller_cm5_sdk.hardware.camera import Camera
+from distiller_sdk.hardware.camera import Camera
 
 cam = Camera()
 cam.capture_image("/tmp/photo.jpg")
@@ -121,7 +121,7 @@ cam.close()
 ### Audio (record 3s, then play)
 
 ```python
-from distiller_cm5_sdk.hardware.audio import Audio
+from distiller_sdk.hardware.audio import Audio
 
 a = Audio()
 a.record("/tmp/out.wav", duration=3.0)
@@ -133,7 +133,7 @@ a.close()
 ### Parakeet ASR (push-to-talk loop)
 
 ```python
-from distiller_cm5_sdk.parakeet import Parakeet
+from distiller_sdk.parakeet import Parakeet
 
 asr = Parakeet()
 try:
@@ -146,7 +146,7 @@ finally:
 ### Piper TTS (stream to speakers)
 
 ```python
-from distiller_cm5_sdk.piper import Piper
+from distiller_sdk.piper import Piper
 
 Piper().speak_stream("Hello from Distiller!", volume=50)
 ```

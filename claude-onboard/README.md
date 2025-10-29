@@ -19,7 +19,7 @@ Device Manager is a comprehensive device administration extension for the Distil
 ## Requirements
 
 - **Distiller CM5 Device**: This extension is designed specifically for the Distiller CM5 hardware platform
-- **Python SDK**: Distiller CM5 SDK installed at `/opt/distiller-cm5-sdk/`
+- **Python SDK**: Distiller CM5 SDK installed at `/opt/distiller-sdk/`
 - **distiller-update**: System update utility for checking and installing packages
 - **Permissions**: Sudo access may be required for e-ink display operations
 
@@ -131,7 +131,7 @@ This extension contributes the following settings:
 
 ### `pamir.eink.pythonPath`
 - **Type**: `string`
-- **Default**: `/opt/distiller-cm5-sdk/.venv/bin/python`
+- **Default**: `/opt/distiller-sdk/.venv/bin/python`
 - **Description**: Python interpreter with SDK access (uses SDK venv by default)
 
 ### `pamir.eink.tunnelUrl`
@@ -192,8 +192,8 @@ This extension contributes the following settings:
 - Verify package repositories are configured
 
 ### E-ink Designer Not Working
-- Verify Python SDK path: `ls /opt/distiller-cm5-sdk/.venv/bin/python`
-- Test SDK import: `python3 -c "from distiller_cm5_sdk.hardware.eink import Display"`
+- Verify Python SDK path: `ls /opt/distiller-sdk/.venv/bin/python`
+- Test SDK import: `python3 -c "from distiller_sdk.hardware.eink import Display"`
 - Check for permission errors in output channel
 - Try increasing timeout via settings if operations fail
 
