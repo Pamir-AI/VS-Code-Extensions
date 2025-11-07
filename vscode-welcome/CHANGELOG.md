@@ -2,6 +2,14 @@
 
 All notable changes to the "pamir-welcome" extension will be documented in this file.
 
+## [1.0.3] - 2025-11-07
+
+### Added
+- **New Extensions Section**: Introduced Distiller Port Manager and Distiller Messaging extensions in quickstart guide
+- **Example Agents**: Added information about personal-dashboard and git-glowUp-agent example projects
+- Documentation for accessing examples via Session Manager's "Navigate Projects" button
+- Improved content organization and readability throughout quickstart guide
+
 ## [1.0.2] - 2025-11-01
 
 ### Added

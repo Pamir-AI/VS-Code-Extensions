@@ -2,7 +2,7 @@
   "name": "pamir-welcome",
   "displayName": "Pamir Welcome & Layout",
   "publisher": "pamir-ai",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Custom Pamir landing page and actions for Distiller CM5 dev",
   "icon": "icon.png",
   "license": "Apache-2.0",
