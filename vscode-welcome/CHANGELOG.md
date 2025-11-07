@@ -2,6 +2,14 @@
 
 All notable changes to the "pamir-welcome" extension will be documented in this file.
 
+## [1.0.2] - 2025-11-01
+
+### Added
+- **HTTPS Setup Instructions**: Added new section in quickstart guide explaining how to enable HTTPS access over local network
+- Documentation for self-signed certificate installation via `https://<device-accesspoint>/distiller/https/`
+- OS-specific automatic certificate setup guidance
+- Security note about local network requirement for HTTPS feature
+
 ## [1.0.1] - 2025-10-17
 
 ### Fixed

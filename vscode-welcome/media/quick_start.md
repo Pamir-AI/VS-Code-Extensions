@@ -13,6 +13,18 @@ Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open /opt/clau
 
 ---
 
+## Enable HTTPS over Local Network
+
+To enable secure HTTPS access using your device's local IP address (displayed on the e-ink screen):
+
+1. Visit `https://<device-accesspoint>/distiller/https/` (e.g., `https://example.devices.pamir.ai/distiller/https/`)
+2. The page will automatically detect your OS and guide you through installing the self-signed certificate
+3. Once installed, you can securely access your device via HTTPS using its local network IP
+
+> **Note:** This feature only works when connected to the same local network as your device for security reasons.
+
+---
+
 ## 1) Connect AI IDE Services
 
 ### Claude (Claude Code CLI)
@@ -152,6 +164,7 @@ Piper().speak_stream("Hello from Distiller!", volume=50)
 ```
 
 ## 4) Network Settings
-visit http://YOUR_DEVICE_IP:8080/ to update any network related changes
+
+Visit http://YOUR_DEVICE_IP:8080/ to update any network related changes.
 
 ---

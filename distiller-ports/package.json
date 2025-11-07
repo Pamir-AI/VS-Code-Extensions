@@ -1,0 +1,187 @@
+{
+  "name": "distiller-ports",
+  "displayName": "Distiller Port Manager",
+  "description": "Monitor and manage development server ports with automatic discovery and proxying",
+  "version": "1.0.0",
+  "publisher": "pamir-ai",
+  "icon": "icon.png",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions"
+  },
+  "bugs": {
+    "url": "https://github.com/Pamir-AI/VS-Code-Extensions/issues"
+  },
+  "homepage": "https://github.com/Pamir-AI/VS-Code-Extensions#readme",
+  "keywords": [
+    "ports",
+    "proxy",
+    "development",
+    "server",
+    "localhost",
+    "distiller",
+    "pamir"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Distiller Ports",
+      "properties": {
+        "distillerPorts.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:3000",
+          "description": "Distiller server URL for port discovery API"
+        },
+        "distillerPorts.pollInterval": {
+          "type": "number",
+          "default": 2000,
+          "description": "Poll interval in milliseconds for port discovery (default: 2000ms)"
+        },
+        "distillerPorts.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when new ports are discovered"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "distiller-ports-container",
+          "title": "Port Manager",
+          "icon": "$(plug)"
+        }
+      ]
+    },
+    "views": {
+      "distiller-ports-container": [
+        {
+          "id": "distillerPorts",
+          "name": "Discovered Ports",
+          "icon": "$(plug)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "distillerPorts.refresh",
+        "title": "Refresh Ports",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "distillerPorts.openInBrowser",
+        "title": "Open in Browser",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "distillerPorts.copyUrl",
+        "title": "Copy Proxy URL"
+      },
+      {
+        "command": "distillerPorts.registerPort",
+        "title": "Register Custom Port",
+        "icon": "$(add)"
+      },
+      {
+        "command": "distillerPorts.excludePort",
+        "title": "Exclude Port"
+      },
+      {
+        "command": "distillerPorts.unexcludePort",
+        "title": "Unexclude Port"
+      },
+      {
+        "command": "distillerPorts.copyPortNumber",
+        "title": "Copy Port Number"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "distillerPorts.refresh",
+          "when": "view == distillerPorts",
+          "group": "navigation@1"
+        },
+        {
+          "command": "distillerPorts.registerPort",
+          "when": "view == distillerPorts",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "distillerPorts.openInBrowser",
+          "when": "view == distillerPorts && viewItem == port",
+          "group": "inline"
+        },
+        {
+          "command": "distillerPorts.copyUrl",
+          "when": "view == distillerPorts && viewItem == port",
+          "group": "1_actions"
+        },
+        {
+          "command": "distillerPorts.copyPortNumber",
+          "when": "view == distillerPorts && viewItem == port",
+          "group": "1_actions"
+        },
+        {
+          "command": "distillerPorts.excludePort",
+          "when": "view == distillerPorts && viewItem == port",
+          "group": "2_manage"
+        },
+        {
+          "command": "distillerPorts.unexcludePort",
+          "when": "view == distillerPorts && viewItem == excludedPort",
+          "group": "2_manage"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "npx tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "npx tsc -p . --outDir out",
+    "watch-tests": "npx tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "npx tsc --noEmit",
+    "lint": "npx eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.11",
+    "eslint": "^9.34.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "axios": "^1.12.2"
+  },
+  "files": [
+    "dist/**",
+    "icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}

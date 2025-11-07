@@ -1,8 +1,8 @@
 #!/bin/bash
 
-EXTENSIONS=("session-manager" "vscode-welcome" "claude-onboard")
-NAMES=("Happy Session Manager" "Pamir Welcome" "Device Manager")
-PKGNAMES=("happy-session-manager" "pamir-welcome" "device-manager")
+EXTENSIONS=("session-manager" "vscode-welcome" "claude-onboard" "distiller-ports" "messaging-manager")
+NAMES=("Happy Session Manager" "Pamir Welcome" "Device Manager" "Distiller Port Manager" "Distiller Messaging")
+PKGNAMES=("happy-session-manager" "pamir-welcome" "device-manager" "distiller-ports" "distiller-messaging")
 
 get_version() {
     local dir=$1
@@ -51,7 +51,9 @@ show_menu() {
     echo "1) Happy Session Manager"
     echo "2) Pamir Welcome"
     echo "3) Device Manager"
-    echo "4) All Extensions"
+    echo "4) Distiller Port Manager"
+    echo "5) Distiller Messaging"
+    echo "6) All Extensions"
     echo "q) Quit"
     echo ""
 }
@@ -65,7 +67,7 @@ main() {
 
         case $choice in
             q|Q) echo "Bye!"; exit 0 ;;
-            1|2|3)
+            1|2|3|4|5)
                 idx=$((choice-1))
                 echo ""
                 read -p "Action (b=build, p=publish, bp=both): " action
@@ -77,14 +79,14 @@ main() {
                     *) echo "Invalid action" ;;
                 esac
                 ;;
-            4)
+            6)
                 echo ""
                 read -p "Action (b=build, p=publish, bp=both): " action
 
                 case $action in
-                    b) for i in 0 1 2; do build_extension $i; done ;;
-                    p) for i in 0 1 2; do publish_extension $i; done ;;
-                    bp) for i in 0 1 2; do build_extension $i && publish_extension $i; done ;;
+                    b) for i in 0 1 2 3 4; do build_extension $i; done ;;
+                    p) for i in 0 1 2 3 4; do publish_extension $i; done ;;
+                    bp) for i in 0 1 2 3 4; do build_extension $i && publish_extension $i; done ;;
                     *) echo "Invalid action" ;;
                 esac
                 ;;
