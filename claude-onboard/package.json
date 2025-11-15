@@ -119,6 +119,7 @@
   },
   "files": [
     "dist/**",
+    "media/**",
     "icon.png",
     "README.md",
     "CHANGELOG.md",

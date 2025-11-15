@@ -48,7 +48,8 @@ export function activate(ctx: vscode.ExtensionContext) {
 
   const shownKey = 'pamir.homeShown';
   if (!ctx.globalState.get(shownKey)) {
-    openWelcome(ctx).then(() => ctx.globalState.update(shownKey, true));
+    openWelcome(ctx);
+    ctx.globalState.update(shownKey, true);
   }
 }
 

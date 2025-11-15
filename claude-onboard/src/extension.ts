@@ -1514,7 +1514,7 @@ async function openEinkWizard(_ctx: vscode.ExtensionContext) {
   );
 
   logEink('Webview panel created, loading HTML');
-  panel.webview.html = await getEinkHtml(panel.webview);
+  panel.webview.html = await getEinkHtml(panel.webview, _ctx.extensionUri);
   logEink('HTML loaded successfully');
 
   panel.webview.onDidReceiveMessage(async (msg) => {
@@ -1977,8 +1977,8 @@ async function runPythonScript(scriptPath: string, requestId?: number): Promise<
   });
 }
 
-async function getEinkHtml(webview: vscode.Webview): Promise<string> {
-  const htmlPath = path.join(__dirname, '..', 'src', 'eink-webview.html');
+async function getEinkHtml(webview: vscode.Webview, extUri: vscode.Uri): Promise<string> {
+  const htmlPath = vscode.Uri.joinPath(extUri, 'media', 'eink-webview.html').fsPath;
   let html = await fsp.readFile(htmlPath, 'utf-8');
 
   const nonce = getNonce();
