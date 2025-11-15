@@ -88,7 +88,7 @@ For full docs, see: `/opt/distiller-sdk/README.md`
 
 ```bash
 # One-time per shell
-export PYTHONPATH="/opt/distiller-cm5-sdk:${PYTHONPATH}"
+export PYTHONPATH="/opt/distiller-sdk:${PYTHONPATH}"
 export LD_LIBRARY_PATH="/opt/distiller-sdk/lib:${LD_LIBRARY_PATH}"
 source /opt/distiller-sdk/.venv/bin/activate
 ```
