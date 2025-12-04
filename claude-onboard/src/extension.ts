@@ -5,6 +5,8 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import { promisify } from 'util';
+import * as https from 'https';
+import * as http from 'http';
 
 const execAsync = promisify(exec);
 
@@ -99,6 +101,22 @@ function needsRefreshFlag(): boolean {
 	}
 }
 
+// NEWS feature constants and types
+const NEWS_MAX_SIZE = 4096;
+const NEWS_ALLOWED_CONTENT_TYPES = new Set([
+	'text/plain',
+	'text/html',
+	'text/markdown',
+	'application/octet-stream'
+]);
+
+interface NewsState {
+	content: string | null;
+	error: string | null;
+	fetchedAt: Date | null;
+	isLoading: boolean;
+}
+
 class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private _trialActive: boolean = false;
@@ -119,12 +137,16 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _trialVerificationTimer: NodeJS.Timeout | undefined;
 	private _trialVerificationAttemptsRemaining: number = 0;
 	private _updateDebounceTimer: NodeJS.Timeout | undefined;
+	// NEWS feature state
+	private _newsState: NewsState = { content: null, error: null, fetchedAt: null, isLoading: false };
+	private _newsCollapsed: boolean = false;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri
 	) {
 		this.checkTrialStatus();
 		this.getDeviceInfo();
+		this.fetchNews();
 	}
 
 	public resolveWebviewView(
@@ -178,6 +200,13 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				case 'clearPackageCache':
 					await this.clearPackageCache();
 					break;
+				case 'toggleNewsCollapsed':
+					this._newsCollapsed = !this._newsCollapsed;
+					this.updateWebview();
+					break;
+				case 'refreshNews':
+					await this.fetchNews();
+					break;
 			}
 		});
 
@@ -186,6 +215,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			if (webviewView.visible) {
 				this.checkTrialStatus();
 				this.getDeviceInfo();
+				this.fetchNews();
 				this.updateWebview();
 			}
 		});
@@ -337,6 +367,106 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			this._deviceMac = 'N/A';
 			this._deviceIp = 'N/A';
 		}
+	}
+
+	private async fetchNews(): Promise<void> {
+		const config = vscode.workspace.getConfiguration();
+		const enabled = config.get<boolean>('pamir.news.enabled', true);
+
+		if (!enabled) {
+			this._newsState = { content: null, error: null, fetchedAt: null, isLoading: false };
+			return;
+		}
+
+		// Prevent concurrent fetches
+		if (this._newsState.isLoading) {
+			return;
+		}
+
+		this._newsState.isLoading = true;
+		this.updateWebview();
+
+		const newsUrl = config.get<string>('pamir.news.url', 'https://apt.pamir.ai/NEWS');
+		const timeout = config.get<number>('pamir.news.timeout', 5000);
+
+		try {
+			const content = await this.fetchNewsContent(newsUrl, timeout);
+			this._newsState = {
+				content,
+				error: null,
+				fetchedAt: new Date(),
+				isLoading: false,
+			};
+		} catch (error: any) {
+			console.error('Failed to fetch news:', error);
+			this._newsState = {
+				content: this._newsState.content, // Keep previous content if available
+				error: error?.message || 'Failed to fetch news',
+				fetchedAt: this._newsState.fetchedAt, // Keep previous timestamp
+				isLoading: false,
+			};
+		}
+
+		this.updateWebview();
+	}
+
+	private fetchNewsContent(urlString: string, timeout: number): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const url = new URL(urlString);
+			const transport = url.protocol === 'https:' ? https : http;
+
+			const req = transport.get(url, {
+				timeout,
+				headers: {
+					'User-Agent': 'device-manager/1.1.0',
+				},
+			}, (res) => {
+				// Check status code
+				if (res.statusCode !== 200) {
+					reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+					return;
+				}
+
+				// Validate content type (warning only, don't fail)
+				const contentType = res.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
+				if (contentType && !NEWS_ALLOWED_CONTENT_TYPES.has(contentType)) {
+					console.warn(`Unexpected content type for news: ${contentType}`);
+				}
+
+				let data = '';
+				let bytesRead = 0;
+
+				res.on('data', (chunk: Buffer) => {
+					bytesRead += chunk.length;
+					if (bytesRead > NEWS_MAX_SIZE) {
+						res.destroy();
+						// Still resolve with truncated content
+						data = data.slice(0, NEWS_MAX_SIZE);
+						console.warn(`News content truncated at ${NEWS_MAX_SIZE} bytes`);
+						resolve(data.trim());
+						return;
+					}
+					data += chunk.toString('utf-8');
+				});
+
+				res.on('end', () => {
+					resolve(data.trim());
+				});
+
+				res.on('error', (err) => {
+					reject(err);
+				});
+			});
+
+			req.on('timeout', () => {
+				req.destroy();
+				reject(new Error(`Request timed out after ${timeout}ms`));
+			});
+
+			req.on('error', (err) => {
+				reject(err);
+			});
+		});
 	}
 
 	public async checkTrialStatus(scheduleFollowUp: boolean = true): Promise<void> {
@@ -1250,6 +1380,66 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 					background: color-mix(in srgb, var(--text) 20%, var(--surface) 80%);
 				}
 
+				/* News section styles */
+				.news-header {
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
+				}
+				.news-header .h {
+					margin: 0;
+					flex: 1;
+				}
+				.collapse-icon {
+					font-family: monospace;
+					color: var(--teal);
+				}
+				.news-refresh-btn {
+					background: transparent;
+					border: 1px solid var(--hair);
+					border-radius: 6px;
+					color: var(--teal);
+					padding: 4px 8px;
+					font-size: 10px;
+					letter-spacing: .08em;
+					cursor: pointer;
+				}
+				.news-refresh-btn:hover:not(:disabled) {
+					border-color: rgba(76,201,176,0.6);
+					background: rgba(76,201,176,0.12);
+				}
+				.news-refresh-btn:disabled {
+					opacity: 0.5;
+					cursor: not-allowed;
+				}
+				.news-timestamp {
+					margin: 4px 0 8px;
+					font-size: 10px;
+					color: var(--muted);
+				}
+				.news-content {
+					padding: 12px;
+					border-radius: var(--radius);
+					border: 1px solid var(--hair);
+					background: var(--surface);
+					font-size: 12px;
+					line-height: 1.6;
+					color: var(--text);
+					max-height: 200px;
+					overflow-y: auto;
+				}
+				.news-loading {
+					padding: 12px;
+					font-size: 12px;
+					color: var(--muted);
+					font-style: italic;
+				}
+				.news-error {
+					padding: 12px;
+					font-size: 12px;
+					color: var(--muted);
+				}
+
 				@media (max-width: 480px){
 					.content{ max-width: 100%; }         /* use full pane width when narrow */
 					.status-bar{ grid-template-columns: 1fr; row-gap: 6px; }
@@ -1322,6 +1512,8 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 						</div>
 					</section>
 
+					${this._getNewsSection()}
+
 					<footer class="footer">
 						<button class="help-btn" onclick="toggleHelp()">${this._showHelp ? 'HIDE HELP' : 'HELP'}</button>
 					</footer>
@@ -1371,6 +1563,14 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 
 					function clearPackageCache() {
 						vscode.postMessage({ type: 'clearPackageCache' });
+					}
+
+					function toggleNewsCollapsed() {
+						vscode.postMessage({ type: 'toggleNewsCollapsed' });
+					}
+
+					function refreshNews() {
+						vscode.postMessage({ type: 'refreshNews' });
 					}
 
 					window.addEventListener('load', () => {
@@ -1457,6 +1657,62 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			className: 'status-idle',
 			detail: 'Activate to begin using Claude Code.'
 		};
+	}
+
+	private _getNewsSection(): string {
+		const config = vscode.workspace.getConfiguration();
+		const enabled = config.get<boolean>('pamir.news.enabled', true);
+
+		if (!enabled) {
+			return '';
+		}
+
+		const hasContent = this._newsState.content && this._newsState.content.length > 0;
+		const hasError = this._newsState.error && !hasContent;
+		const isLoading = this._newsState.isLoading;
+
+		// Format timestamp
+		let timestampStr = '';
+		if (this._newsState.fetchedAt) {
+			timestampStr = this._newsState.fetchedAt.toLocaleString();
+		}
+
+		// Collapse toggle icon
+		const collapseIcon = this._newsCollapsed ? '+' : '-';
+
+		// Content or placeholder
+		let contentHtml = '';
+		if (isLoading) {
+			contentHtml = `<div class="news-loading">Loading news...</div>`;
+		} else if (hasError && !hasContent) {
+			contentHtml = `<div class="news-error">Unable to load news</div>`;
+		} else if (hasContent && !this._newsCollapsed) {
+			// Escape HTML to prevent XSS (news is plain text)
+			const escapedContent = this._newsState.content!
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/\n/g, '<br>');
+			contentHtml = `<div class="news-content">${escapedContent}</div>`;
+		}
+
+		return `
+			<hr class="rule" />
+			<section class="section">
+				<div class="content">
+					<div class="news-header">
+						<h3 class="h" onclick="toggleNewsCollapsed()" style="cursor: pointer;">
+							<span class="collapse-icon">[${collapseIcon}]</span> NEWS
+						</h3>
+						<button class="news-refresh-btn" onclick="refreshNews()" ${isLoading ? 'disabled' : ''}>
+							REFRESH
+						</button>
+					</div>
+					${timestampStr ? `<p class="news-timestamp">Last updated: ${timestampStr}</p>` : ''}
+					${contentHtml}
+				</div>
+			</section>
+		`;
 	}
 
 }

@@ -82,6 +82,21 @@
           "type": "boolean",
           "default": false,
           "description": "Keep temporary files for debugging (normally cleaned up)."
+        },
+        "pamir.news.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable fetching and displaying news from Pamir AI servers."
+        },
+        "pamir.news.url": {
+          "type": "string",
+          "default": "https://apt.pamir.ai/NEWS",
+          "description": "URL to fetch news content from."
+        },
+        "pamir.news.timeout": {
+          "type": "number",
+          "default": 5000,
+          "description": "Timeout in milliseconds for news fetch requests."
         }
       }
     }
