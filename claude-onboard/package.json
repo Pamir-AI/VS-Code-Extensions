@@ -3,7 +3,7 @@
   "displayName": "Device Manager",
   "publisher": "pamir-ai",
   "description": "An extension to start/stop their claude code trail on demand",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -65,7 +65,7 @@
       "properties": {
         "pamir.eink.pythonPath": {
           "type": "string",
-          "default": "/opt/distiller-cm5-sdk/.venv/bin/python",
+          "default": "/opt/distiller-sdk/.venv/bin/python",
           "description": "Python interpreter with SDK access (uses SDK venv by default)."
         },
         "pamir.eink.tunnelUrl": {
@@ -119,7 +119,7 @@
   },
   "files": [
     "dist/**",
-    "src/eink-webview.html",
+    "media/**",
     "icon.png",
     "README.md",
     "CHANGELOG.md",

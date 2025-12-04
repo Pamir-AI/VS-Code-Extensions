@@ -17,7 +17,6 @@ interface Package {
 	current_version: string | null;
 	new_version: string;
 	size?: number;
-	update_type?: string;
 }
 
 interface ListResponse {
@@ -27,9 +26,18 @@ interface ListResponse {
 	checked_at: string;
 }
 
-interface JobStatus {
-	code: number;
-	sub: string;
+interface ApplyResult {
+	ok: boolean;
+	rc: number;
+	started_at: string;
+	finished_at: string;
+	results: Array<{
+		name: string;
+		installed: string;
+		expected: string;
+	}>;
+	led_status?: 'updating' | 'success' | 'error' | 'idle' | 'disabled';
+	error?: string;
 }
 
 class WelcomeViewProvider implements vscode.WebviewViewProvider {
@@ -37,7 +45,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _trialActive: boolean = false;
 	private _trialConfirmed: boolean = false;
 	private _isProcessing: boolean = false;
-	private _errorState: '404' | '500' | null = null;
+	private _errorState: '404' | '500' | 'broken_packages' | null = null;
 	private _showHelp: boolean = false;
 	private _deviceMac: string = '';
 	private _deviceIp: string = '';
@@ -45,18 +53,13 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _updateDetails: string = '';
 	private _availableUpdates: Package[] = [];
 	private _hasCheckedUpdates: boolean = false;
-	private _updateLogOutput: string = '';
-	private _updateUnit: string = '';
-	private _installRemaining: number = 0;
 	private _initialUpdateCount: number = 0;
 	private _completedPackages: Set<string> = new Set();
 	private _currentPackage: string = '';
-	private _lastLogFetch: Date | null = null;
 	private _trialStatusSources: { env: boolean; settings: boolean } = { env: false, settings: false };
 	private _trialVerificationTimer: NodeJS.Timeout | undefined;
 	private _trialVerificationAttemptsRemaining: number = 0;
-	
-	// Test mode toggle
+	private _updateDebounceTimer: NodeJS.Timeout | undefined;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri
@@ -110,8 +113,11 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				case 'installUpdates':
 					await this.runSystemUpdate();
 					break;
-				case 'viewUpdateLogs':
-					await this.showUpdateLogs();
+				case 'configurePendingPackages':
+					await this.configurePendingPackages();
+					break;
+				case 'clearPackageCache':
+					await this.clearPackageCache();
 					break;
 			}
 		});
@@ -258,7 +264,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private async getDeviceInfo(): Promise<void> {
 		try {
 			// Get MAC address using the Python script
-			const { stdout: macOutput } = await execAsync('python3 /opt/distiller-telemetry/get_mac.py');
+			const { stdout: macOutput } = await execAsync('python3 /usr/lib/distiller-telemetry/get_mac.py');
 			const macMatch = macOutput.match(/([0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2})/i);
 			if (macMatch) {
 				this._deviceMac = macMatch[1];
@@ -384,7 +390,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		this.updateWebview();
 
 		return new Promise((resolve) => {
-			const process = spawn('python3', ['/opt/distiller-telemetry/device_register.py']);
+			const process = spawn('python3', ['/usr/lib/distiller-telemetry/device_register.py']);
 			
 			let output = '';
 			let errorOutput = '';
@@ -445,7 +451,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		this.updateWebview();
 
 		return new Promise((resolve) => {
-			const process = spawn('python3', ['/opt/distiller-telemetry/device_unregister.py']);
+			const process = spawn('python3', ['/usr/lib/distiller-telemetry/device_unregister.py']);
 			
 			let output = '';
 			
@@ -526,26 +532,10 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            // Concurrency guard: any active apply units?
-            const { stdout: unitsOut } = await execAsync("systemctl list-units --type=service 'distiller-apply-*' --no-legend || true");
-            const activeUnitLine = unitsOut.split('\n').find(l => l.trim());
-            if (activeUnitLine) {
-                const unit = activeUnitLine.split(/\s+/)[0];
-                this._updateUnit = unit;
-                this._isProcessing = true;
-                this._updateStatus = 'running';
-                this._updateDetails = `An update is already running: ${unit}`;
-                this._updateLogOutput = '';
-                this.updateWebview();
-                vscode.window.showWarningMessage(`An update is already running (${unit}). Attaching to progress…`);
-                this.startUpdateStatusMonitoringSystemd(unit);
-                return;
-            }
-
             // Confirm with the user before proceeding
             const choice = await vscode.window.showWarningMessage(
                 'System update will restart services and may disconnect the editor temporarily.',
-                { modal: true, detail: 'Save your work. The UI may disconnect and reconnect repeatedly during the update. You can view progress via “View Logs”. Proceed with installation?' },
+                { modal: true, detail: 'Save your work. The UI may disconnect and reconnect repeatedly during the update. Proceed with installation?' },
                 'Install Now',
                 'Cancel'
             );
@@ -554,152 +544,224 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Start processing only after confirmation
+            // Start processing
             this._isProcessing = true;
             this._updateStatus = 'starting';
             this._updateDetails = 'Starting Pamir system update...';
-            this._updateLogOutput = '';
-            this._updateUnit = '';
             this._initialUpdateCount = this._availableUpdates.length;
             this._completedPackages.clear();
             this._currentPackage = '';
-            this._lastLogFetch = null;
             this.updateWebview();
 
-            const jobId = Date.now().toString();
-            const unit = `distiller-apply-${jobId}`;
-            const cmd = `sudo -n systemd-run --unit=${unit} --collect --property=After=network-online.target /usr/bin/distiller-update apply --json --refresh`;
-            await execAsync(cmd);
-            this._updateUnit = unit;
-            vscode.window.showInformationMessage('System update scheduled successfully.');
-            this.startUpdateStatusMonitoringSystemd(unit);
+            // Spawn distiller-update directly for real-time progress
+            const proc = spawn('sudo', [
+                '-n',
+                '/usr/bin/distiller-update',
+                'apply',
+                '--json',
+                '--refresh'
+            ]);
+
+            let outputBuffer = '';
+
+            // Event-driven: fires immediately when APT outputs text
+            proc.stdout.on('data', (data) => {
+                const text = data.toString();
+                outputBuffer += text;
+                this.parseAptOutput(text);
+            });
+
+            proc.stderr.on('data', (data) => {
+                console.error('distiller-update stderr:', data.toString());
+            });
+
+            proc.on('exit', (code) => {
+                this.handleUpdateExit(code, outputBuffer);
+            });
+
+            proc.on('error', (err) => {
+                this._isProcessing = false;
+                this._updateStatus = '';
+                this._updateDetails = '';
+                vscode.window.showErrorMessage(
+                    `Failed to start update: ${err.message}. Ensure passwordless sudo is configured.`
+                );
+                this.updateWebview();
+            });
+
         } catch (err: any) {
             this._isProcessing = false;
             this._updateStatus = '';
             this._updateDetails = '';
-            vscode.window.showErrorMessage(`Failed to schedule update: ${err?.message ?? err}`);
+            vscode.window.showErrorMessage(`Failed to start update: ${err?.message ?? err}`);
             this.updateWebview();
         }
     }
 
-	private startUpdateStatusMonitoringSystemd(unit: string): void {
-		let checkCount = 0;
-		const maxChecks = 240; // ~12 minutes at 3s intervals
+	private parseAptOutput(text: string): void {
+		const setupRegex = /Setting up ([a-z0-9][a-z0-9+.-]+) \(/g;
+		let match;
+		while ((match = setupRegex.exec(text)) !== null) {
+			this._completedPackages.add(match[1]);
+			this._currentPackage = match[1];
+		}
 
-		const checkStatus = async () => {
-			checkCount++;
-			try {
-				// Poll unit status
-				const { stdout } = await execAsync(`systemctl show ${unit} -p SubState,ExecMainStatus`);
-				const subMatch = /SubState=(\S+)/.exec(stdout);
-				const codeMatch = /ExecMainStatus=(\d+)/.exec(stdout);
-				const sub = subMatch?.[1] ?? '';
-				const code = parseInt(codeMatch?.[1] ?? '0', 10);
-				this._updateUnit = unit;
+		const unpackRegex = /Unpacking ([a-z0-9][a-z0-9+.-]+) \(/g;
+		while ((match = unpackRegex.exec(text)) !== null) {
+			this._currentPackage = match[1];
+		}
 
-				// Fetch and parse logs for progress tracking
-				try {
-					// Only fetch new logs since last check
-					const since = this._lastLogFetch
-						? this._lastLogFetch.toISOString()
-						: '10 seconds ago';
-					const { stdout: logs } = await execAsync(`journalctl -u ${unit} --no-pager --since="${since}"`);
-					this._lastLogFetch = new Date();
-
-					// Parse for completed packages: "Setting up <package> (<version>) ..."
-					const setupRegex = /Setting up ([a-z0-9][a-z0-9+.-]+) \(/g;
-					let match;
-					let lastPackage = '';
-					while ((match = setupRegex.exec(logs)) !== null) {
-						this._completedPackages.add(match[1]);
-						lastPackage = match[1];
-					}
-
-					// Track currently installing package
-					if (lastPackage) {
-						this._currentPackage = lastPackage;
-					}
-
-					// Calculate progress
-					const completed = this._completedPackages.size;
-					const total = this._initialUpdateCount;
-					this._installRemaining = Math.max(0, total - completed);
-
-					// Keep last few lines for optional detailed view
-					const lines = logs.split('\n').filter(l => l.trim());
-					if (lines.length > 0) {
-						this._updateLogOutput = lines.slice(-12).join('\n');
-					}
-				} catch {}
-
-				// Update basic status
-				this._updateStatus = sub || 'running';
-				if (sub === 'running') {
-					if (this._initialUpdateCount > 0) {
-						const current = this._currentPackage ? ` (${this._currentPackage})` : '';
-						this._updateDetails = `Installing ${this._completedPackages.size}/${this._initialUpdateCount} packages${current}`;
-					} else {
-						this._updateDetails = 'Installing updates';
-					}
-				} else {
-					this._updateDetails = `Status: ${sub}`;
-				}
-
-				// Completion paths
-				if (sub === 'dead' || sub === 'exited' || sub === 'failed') {
-					this._isProcessing = false;
-					if (code === 0 && sub !== 'failed') {
-						vscode.window.showInformationMessage('Pamir system update completed successfully!');
-						this._hasCheckedUpdates = false;
-						this._availableUpdates = [];
-						this._updateStatus = '';
-						this._updateDetails = '';
-						this._updateLogOutput = '';
-						this._updateUnit = '';
-						this._installRemaining = 0;
-						this._initialUpdateCount = 0;
-						this._completedPackages.clear();
-						this._currentPackage = '';
-						this._lastLogFetch = null;
-						this.updateWebview();
-						return;
-					} else {
-						vscode.window.showErrorMessage('System update failed. View logs for details.');
-						this.updateWebview();
-						return;
-					}
-				}
-
-				this.updateWebview();
-			} catch (e) {
-				console.error('Failed to poll systemd status:', e);
-			}
-
-			if (this._isProcessing && checkCount < maxChecks) {
-				setTimeout(checkStatus, 5000);
-			} else if (checkCount >= maxChecks) {
-				this._isProcessing = false;
-				this._updateStatus = 'timeout';
-				this._updateDetails = 'Update process timed out';
-				vscode.window.showWarningMessage('System update monitoring timed out. Use journalctl to inspect logs.');
-				this.updateWebview();
-			}
-		};
-
-		setTimeout(checkStatus, 2000);
+		// Debounce webview updates to prevent race conditions
+		if (this._updateDebounceTimer) {
+			clearTimeout(this._updateDebounceTimer);
+		}
+		this._updateDebounceTimer = setTimeout(() => {
+			this.updateWebview();
+			this._updateDebounceTimer = undefined;
+		}, 100); // 100ms debounce
 	}
 
-	private async showUpdateLogs(): Promise<void> {
-		try {
-			if (!this._updateUnit) {
-				vscode.window.showInformationMessage('No update job to show logs for.');
-				return;
+	private detectBrokenPackages(code: number | null, output: string): 'broken_packages' | null {
+		const DPKG_ERROR_EXIT_CODE = 100;
+		const lowerOutput = output.toLowerCase();
+
+		const errorPatterns = [
+			'dpkg was interrupted',
+			'errors were encountered',
+			'sub-process /usr/bin/dpkg returned an error',
+			'dpkg: error processing',
+			'e: sub-process',
+		];
+
+		const hasErrorPattern = errorPatterns.some(pattern => lowerOutput.includes(pattern));
+
+		if (hasErrorPattern || code === DPKG_ERROR_EXIT_CODE) {
+			return 'broken_packages';
+		}
+
+		return null;
+	}
+
+	private handleUpdateExit(code: number | null, output: string): void {
+		this._isProcessing = false;
+
+		// Parse JSON result from last line
+		const lines = output.trim().split('\n');
+		let result: ApplyResult | null = null;
+
+		// Find last valid JSON line (may be after APT output)
+		for (let i = lines.length - 1; i >= 0; i--) {
+			try {
+				if (lines[i].trim().startsWith('{')) {
+					result = JSON.parse(lines[i]) as ApplyResult;
+					break;
+				}
+			} catch (e) {
+				continue;
 			}
-			const { stdout } = await execAsync(`journalctl -u ${this._updateUnit} --no-pager -n 500`);
-			const doc = await vscode.workspace.openTextDocument({ content: stdout, language: 'log' });
-			await vscode.window.showTextDocument(doc, { preview: true });
-		} catch (e: any) {
-			vscode.window.showErrorMessage(`Failed to open logs: ${e?.message ?? e}`);
+		}
+
+		if (result?.ok) {
+			const ledMsg = result.led_status === 'success' ? ' (LED: Green)' : '';
+			vscode.window.showInformationMessage(
+				`System update completed successfully!${ledMsg}`
+			);
+			this._hasCheckedUpdates = false;
+			this._availableUpdates = [];
+			this._completedPackages.clear();
+			this._currentPackage = '';
+			this._updateStatus = '';
+			this._updateDetails = '';
+		} else if (result?.ok === false) {
+			// Detect broken package states using centralized method
+			const errorOutput = result.error || output;
+			this._errorState = this.detectBrokenPackages(code, errorOutput);
+
+			if (this._errorState === 'broken_packages') {
+				this._updateStatus = 'Package installation failed. Use recovery options below to fix.';
+			} else {
+				this._updateStatus = result.error || 'Update failed';
+			}
+
+			const ledMsg = result.led_status === 'error' ? ' (LED: Red)' : '';
+			vscode.window.showErrorMessage(
+				`System update failed${ledMsg}. ${this._updateStatus}`
+			);
+			this._updateDetails = '';
+		} else if (code === 0) {
+			vscode.window.showInformationMessage('System update completed successfully!');
+			this._hasCheckedUpdates = false;
+			this._availableUpdates = [];
+			this._updateStatus = '';
+			this._updateDetails = '';
+		} else {
+			// Handle unexpected failure (no JSON result but non-zero exit code)
+			this._errorState = this.detectBrokenPackages(code, output);
+			this._updateStatus = this._errorState === 'broken_packages'
+				? 'Package installation failed. Use recovery options below to fix.'
+				: 'Update failed unexpectedly';
+			vscode.window.showErrorMessage(`System update failed with code ${code}`);
+			this._updateDetails = '';
+		}
+
+		this.updateWebview();
+	}
+
+	private async configurePendingPackages(): Promise<void> {
+		this._isProcessing = true;
+		this._updateStatus = 'Configuring pending packages...';
+		this.updateWebview();
+
+		try {
+			await execAsync('sudo dpkg --configure -a');
+
+			// Verify recovery succeeded
+			const { stdout: dpkgStatus } = await execAsync('dpkg --audit');
+			if (dpkgStatus.trim().length > 0) {
+				throw new Error('Some packages remain unconfigured. Check package status manually.');
+			}
+
+			// Clear all error-related state
+			this._errorState = null;
+			this._completedPackages.clear();
+			this._currentPackage = '';
+			this._initialUpdateCount = 0;
+			this._updateStatus = 'Package configuration completed';
+
+			vscode.window.showInformationMessage('Successfully configured pending packages');
+		} catch (error: any) {
+			console.error('Failed to configure packages:', error);
+			// Keep error state since recovery failed
+			this._updateStatus = `Configuration failed: ${error.message}`;
+			vscode.window.showErrorMessage(`Failed to configure packages: ${error.message}`);
+		} finally {
+			this._isProcessing = false;
+			this.updateWebview();
+		}
+	}
+
+	private async clearPackageCache(): Promise<void> {
+		this._isProcessing = true;
+		this._updateStatus = 'Clearing package cache...';
+		this.updateWebview();
+
+		try {
+			await execAsync('sudo apt-get clean');
+
+			// Clear update-related state
+			this._completedPackages.clear();
+			this._currentPackage = '';
+			this._initialUpdateCount = 0;
+			this._updateStatus = 'Package cache cleared';
+
+			vscode.window.showInformationMessage('Successfully cleared package cache');
+		} catch (error: any) {
+			console.error('Failed to clear cache:', error);
+			this._updateStatus = `Failed to clear cache: ${error.message}`;
+			vscode.window.showErrorMessage(`Failed to clear package cache: ${error.message}`);
+		} finally {
+			this._isProcessing = false;
+			this.updateWebview();
 		}
 	}
 
@@ -761,10 +823,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			toolActions.push(`<button class=\"btn btn-teal btn-fill\" onclick=\"installUpdates()\" ${this._isProcessing ? 'disabled' : ''}>INSTALL UPDATES</button>`);
 		}
 
-		if (this._updateUnit || this._updateLogOutput) {
-			toolActions.push(`<button class=\"btn btn-teal\" onclick=\"viewLogs()\">VIEW LOGS</button>`);
-		}
-
 		const toolButtonsMarkup = toolActions.length
 			? `<div class="btn-row">${toolActions.join('')}</div>`
 			: '';
@@ -805,6 +863,32 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 			} else {
 				updateDetails += `<div class="notice">System is up to date.</div>`;
 			}
+		}
+
+		// Recovery section for broken packages
+		let recoverySection = '';
+		if (this._errorState === 'broken_packages') {
+			recoverySection = `
+				<div class="recovery-section">
+					<div class="alert alert-warning">
+						<strong>[!] Package Installation Failed</strong>
+						<p>The system detected errors during package installation. Use the recovery options below to fix the issue.</p>
+					</div>
+					<div class="btn-row">
+						<button class="btn btn-primary" onclick="configurePendingPackages()" ${this._isProcessing ? 'disabled' : ''}>
+							CONFIGURE PENDING PACKAGES
+						</button>
+						<button class="btn btn-secondary" onclick="clearPackageCache()" ${this._isProcessing ? 'disabled' : ''}>
+							CLEAR PACKAGE CACHE
+						</button>
+					</div>
+					<p class="recovery-help">
+						<strong>What do these do?</strong><br>
+						• <strong>Configure Pending:</strong> Completes interrupted package installations (dpkg --configure -a)<br>
+						• <strong>Clear Cache:</strong> Removes downloaded package files that may be corrupted (apt-get clean)
+					</p>
+				</div>
+			`;
 		}
 
 		const helpPanel = `
@@ -1069,6 +1153,53 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				}
 				.help-panel .label { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--teal); margin-bottom:4px; }
 
+				/* Recovery UI styles */
+				.recovery-section {
+					margin: 20px 0;
+					padding: 16px;
+					background: var(--surface);
+					border-radius: var(--radius);
+					border: 1px solid var(--hair);
+				}
+				.alert {
+					padding: 14px;
+					border-radius: var(--radius);
+					margin-bottom: 16px;
+					line-height: 1.5;
+				}
+				.alert-warning {
+					background: color-mix(in srgb, var(--amber) 15%, var(--surface) 85%);
+					border-left: 4px solid var(--amber);
+				}
+				.alert-warning strong {
+					color: var(--amber);
+					display: block;
+					margin-bottom: 6px;
+				}
+				.alert-warning p {
+					margin: 0;
+					font-size: 13px;
+					color: var(--text);
+				}
+				.recovery-help {
+					margin-top: 16px;
+					padding-top: 12px;
+					border-top: 1px solid var(--hair);
+					font-size: 12px;
+					color: var(--muted);
+					line-height: 1.6;
+				}
+				.recovery-help strong {
+					color: var(--text);
+				}
+				.btn-secondary {
+					background: color-mix(in srgb, var(--text) 10%, var(--surface) 90%);
+					color: var(--text);
+				}
+				.btn-secondary:hover:not(:disabled) {
+					background: color-mix(in srgb, var(--text) 20%, var(--surface) 80%);
+				}
+
 				@media (max-width: 480px){
 					.content{ max-width: 100%; }         /* use full pane width when narrow */
 					.status-bar{ grid-template-columns: 1fr; row-gap: 6px; }
@@ -1137,6 +1268,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 							<h3 class="h">DEVICE TOOLS</h3>
 							${toolButtonsMarkup}
 							${updateDetails}
+							${recoverySection}
 						</div>
 					</section>
 
@@ -1183,10 +1315,14 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 						vscode.postMessage({ type: 'installUpdates' });
 					}
 
-					function viewLogs() {
-						vscode.postMessage({ type: 'viewUpdateLogs' });
+					function configurePendingPackages() {
+						vscode.postMessage({ type: 'configurePendingPackages' });
 					}
-					
+
+					function clearPackageCache() {
+						vscode.postMessage({ type: 'clearPackageCache' });
+					}
+
 					window.addEventListener('load', () => {
 						vscode.postMessage({ type: 'checkStatus' });
 					});
@@ -1208,7 +1344,7 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		return 'inactive';
 	}
 
-	private getStatusMetadata(effectiveErrorState: '404' | '500' | null): { label: string; className: string; detail: string } {
+	private getStatusMetadata(effectiveErrorState: '404' | '500' | 'broken_packages' | null): { label: string; className: string; detail: string } {
 		if (this._isProcessing) {
 			return {
 				label: (this._updateStatus || 'processing').toUpperCase(),
@@ -1238,6 +1374,14 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 				label: 'TRIAL EXPIRED',
 				className: 'status-error',
 				detail: 'Trial access has ended for this device.'
+			};
+		}
+
+		if (effectiveErrorState === 'broken_packages') {
+			return {
+				label: 'UPDATE FAILED',
+				className: 'status-error',
+				detail: 'Package installation encountered errors. Use recovery options below.'
 			};
 		}
 
@@ -1288,7 +1432,11 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-export function deactivate() {}
+export function deactivate() {
+	if (einkOutputChannel) {
+		einkOutputChannel.dispose();
+	}
+}
 
 // ---------------------------------------------------------------------------
 // E‑ink feature: webview UI + SDK TemplateRenderer integration (moved here)
@@ -1366,7 +1514,7 @@ async function openEinkWizard(_ctx: vscode.ExtensionContext) {
   );
 
   logEink('Webview panel created, loading HTML');
-  panel.webview.html = await getEinkHtml(panel.webview);
+  panel.webview.html = await getEinkHtml(panel.webview, _ctx.extensionUri);
   logEink('HTML loaded successfully');
 
   panel.webview.onDidReceiveMessage(async (msg) => {
@@ -1568,7 +1716,7 @@ async function createPythonScript(operation: 'preview' | 'display', templatePath
   if (operation === 'preview') {
     script = `#!/usr/bin/env python3
 import sys
-from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
+from distiller_sdk.hardware.eink.composer import TemplateRenderer
 
 MAX_IP_LEN = 15
 
@@ -1619,7 +1767,7 @@ except Exception as e:
 
 print(f"[SCRIPT] Importing TemplateRenderer...", file=sys.stderr)
 try:
-    from distiller_cm5_sdk.hardware.eink.composer import TemplateRenderer
+    from distiller_sdk.hardware.eink.composer import TemplateRenderer
     print(f"[SCRIPT] TemplateRenderer imported successfully", file=sys.stderr)
 except ImportError as e:
     print(f"ERROR: Failed to import TemplateRenderer: {e}", file=sys.stderr)
@@ -1756,7 +1904,7 @@ async function displayOnDevice(imageBase64: string, overlays: Overlays, requestI
 async function runPythonScript(scriptPath: string, requestId?: number): Promise<void> {
   const reqId = requestId || Date.now();
   const cfg = vscode.workspace.getConfiguration();
-  const pythonPath = cfg.get<string>('pamir.eink.pythonPath') || '/opt/distiller-cm5-sdk/.venv/bin/python';
+  const pythonPath = cfg.get<string>('pamir.eink.pythonPath') || '/opt/distiller-sdk/.venv/bin/python';
   const timeoutMs = cfg.get<number>('pamir.eink.timeoutMs') || 30000;
 
   logEink(`[${reqId}] Starting Python execution: ${pythonPath} ${scriptPath}`);
@@ -1829,8 +1977,8 @@ async function runPythonScript(scriptPath: string, requestId?: number): Promise<
   });
 }
 
-async function getEinkHtml(webview: vscode.Webview): Promise<string> {
-  const htmlPath = path.join(__dirname, '..', 'src', 'eink-webview.html');
+async function getEinkHtml(webview: vscode.Webview, extUri: vscode.Uri): Promise<string> {
+  const htmlPath = vscode.Uri.joinPath(extUri, 'media', 'eink-webview.html').fsPath;
   let html = await fsp.readFile(htmlPath, 'utf-8');
 
   const nonce = getNonce();

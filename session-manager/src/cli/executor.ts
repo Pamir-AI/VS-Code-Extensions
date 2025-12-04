@@ -29,7 +29,7 @@ export class HappyCliExecutor {
     }
 
     // Check system install
-    const systemPath = '/opt/claude-code-web-manager/services/happy-cli/bin/happy.mjs';
+    const systemPath = '/usr/lib/claude-code-web-manager/services/happy-cli/dist/index.mjs';
     if (fs.existsSync(systemPath)) {
       this.cliPath = systemPath;
       return;
