@@ -2,6 +2,12 @@
 
 All notable changes to the "pamir-welcome" extension will be documented in this file.
 
+## [1.1.0] - 2025-12-05
+
+### Added
+- Platform version detection to show upgrade notice for users on Platform < 2.0
+- New upgrade.md page with instructions for upgrading via Device Manager
+
 ## [1.0.3] - 2025-11-07
 
 ### Added
