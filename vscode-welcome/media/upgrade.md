@@ -1,6 +1,6 @@
 # Platform Upgrade Required
 
-Your Distiller device is running an older platform version that is no longer compatible with the latest extensions.
+Your Distiller device is running on testing packages. This update moves your device to stable package releases.
 
 ---
 
@@ -14,13 +14,24 @@ The process may take a few minutes and will restart some services.
 
 ---
 
-## Why Upgrade?
+## What's New in Platform 2.0
 
-Version 2.0.0 includes:
-- Updated SDK paths and configurations
-- Improved system update handling
-- Better extension compatibility
-- Bug fixes and performance improvements
+- **Claude Code v2** with new skills system (`~/.claude/skills`)
+- **Improved Distiller SDK** now available at `/opt/distiller-sdk`
+- **Better system stability** - fewer random reboots
+- **Captive WiFi registration** for easier network setup
+- **LED update indicator** - device LEDs show update progress
+- **SD card automount** now works out of the box
+- **Device diagnostics** available at `<your-device>.devices.pamir.ai/watchdog`
+- **Improved Phone UI** powered by claude-agent-sdk (Codex support discontinued)
+
+---
+
+## Staying on Platform 1.0
+
+You can choose to remain on Platform 1.0, but please note:
+- Platform 1.0 will no longer receive updates
+- Some extensions may not work as expected
 
 ---
 
