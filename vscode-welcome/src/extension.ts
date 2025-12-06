@@ -173,7 +173,8 @@ function getNonce() {
 function getMarkdownContent(webview: vscode.Webview, extUri: vscode.Uri): string {
   try {
     const mediaRoot = getMediaRoot(extUri);
-    const markdownPath = path.join(mediaRoot.fsPath, 'quick_start.md');
+    const mdFile = needsUpgrade() ? 'upgrade.md' : 'quick_start.md';
+    const markdownPath = path.join(mediaRoot.fsPath, mdFile);
     const content = require('fs').readFileSync(markdownPath, 'utf-8');
     let html: string = marked(content);
     // Prefer inlining local images as data URIs for maximum compatibility
@@ -189,6 +190,23 @@ function getMarkdownContent(webview: vscode.Webview, extUri: vscode.Uri): string
   } catch (e) {
     console.log('[pamir] Failed to read markdown:', e);
     return '<p>Unable to load content.</p>';
+  }
+}
+
+function needsUpgrade(): boolean {
+  try {
+    const fs = require('fs');
+    const info = fs.readFileSync('/etc/distiller-platform-info', 'utf-8');
+    const match = info.match(/DISTILLER_PLATFORM_VERSION=(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return false;
+    const [, major, minor, patch] = match.map(Number);
+    // Needs upgrade if version < 2.0.0
+    if (major < 2) return true;
+    if (major === 2 && minor === 0 && patch === 0) return false;
+    return false;
+  } catch {
+    // File doesn't exist or can't be read - assume no upgrade needed
+    return false;
   }
 }
 
