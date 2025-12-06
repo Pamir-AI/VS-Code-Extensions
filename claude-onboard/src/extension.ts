@@ -140,6 +140,10 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	// NEWS feature state
 	private _newsState: NewsState = { content: null, error: null, fetchedAt: null, isLoading: false };
 	private _newsCollapsed: boolean = false;
+	// Update polling state for setsid-based updates
+	private _updatePollTimer: NodeJS.Timeout | undefined;
+	private _updateLogPath: string = '/tmp/distiller-update.log';
+	private _lastLogSize: number = 0;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri
@@ -730,7 +734,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
                 'Cancel'
             );
             if (choice !== 'Install Now') {
-                // User cancelled
                 return;
             }
 
@@ -741,41 +744,23 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
             this._initialUpdateCount = this._availableUpdates.length;
             this._completedPackages.clear();
             this._currentPackage = '';
+            this._lastLogSize = 0;
             this.updateWebview();
 
-            // Spawn distiller-update directly for real-time progress
-            const args = ['-n', '/usr/bin/distiller-update', 'apply', '--json'];
-            if (needsRefreshFlag()) {
-                args.push('--refresh');
-            }
-            const proc = spawn('sudo', args);
+            // Clear any existing log file
+            try {
+                fs.unlinkSync(this._updateLogPath);
+            } catch {}
 
-            let outputBuffer = '';
+            // Run update detached using setsid so it survives code-server restart
+            const refreshFlag = needsRefreshFlag() ? ' --refresh' : '';
+            const cmd = `setsid sudo /usr/bin/distiller-update apply --json${refreshFlag} > ${this._updateLogPath} 2>&1 &`;
+            await execAsync(cmd);
 
-            // Event-driven: fires immediately when APT outputs text
-            proc.stdout.on('data', (data) => {
-                const text = data.toString();
-                outputBuffer += text;
-                this.parseAptOutput(text);
-            });
+            vscode.window.showInformationMessage('System update started.');
 
-            proc.stderr.on('data', (data) => {
-                console.error('distiller-update stderr:', data.toString());
-            });
-
-            proc.on('exit', (code) => {
-                this.handleUpdateExit(code, outputBuffer);
-            });
-
-            proc.on('error', (err) => {
-                this._isProcessing = false;
-                this._updateStatus = '';
-                this._updateDetails = '';
-                vscode.window.showErrorMessage(
-                    `Failed to start update: ${err.message}. Ensure passwordless sudo is configured.`
-                );
-                this.updateWebview();
-            });
+            // Start polling the log file for progress
+            this.startLogPolling();
 
         } catch (err: any) {
             this._isProcessing = false;
@@ -784,6 +769,107 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showErrorMessage(`Failed to start update: ${err?.message ?? err}`);
             this.updateWebview();
         }
+    }
+
+    private startLogPolling(): void {
+        // Poll every 1 second
+        this._updatePollTimer = setInterval(() => {
+            this.pollUpdateLog();
+        }, 1000);
+    }
+
+    private stopLogPolling(): void {
+        if (this._updatePollTimer) {
+            clearInterval(this._updatePollTimer);
+            this._updatePollTimer = undefined;
+        }
+    }
+
+    private pollUpdateLog(): void {
+        try {
+            if (!fs.existsSync(this._updateLogPath)) {
+                return;
+            }
+
+            const stat = fs.statSync(this._updateLogPath);
+            if (stat.size === this._lastLogSize) {
+                // No new data, check if process finished
+                this.checkIfUpdateFinished();
+                return;
+            }
+
+            // Read new content from log file
+            const fd = fs.openSync(this._updateLogPath, 'r');
+            const buffer = Buffer.alloc(stat.size - this._lastLogSize);
+            fs.readSync(fd, buffer, 0, buffer.length, this._lastLogSize);
+            fs.closeSync(fd);
+            this._lastLogSize = stat.size;
+
+            const newContent = buffer.toString('utf-8');
+            this.parseAptOutput(newContent);
+
+            // Check if we have the final JSON result
+            this.checkIfUpdateFinished();
+
+        } catch (err) {
+            console.error('Error polling update log:', err);
+        }
+    }
+
+    private checkIfUpdateFinished(): void {
+        try {
+            if (!fs.existsSync(this._updateLogPath)) {
+                return;
+            }
+
+            const content = fs.readFileSync(this._updateLogPath, 'utf-8');
+
+            // Try to extract final JSON result
+            try {
+                const result = extractJson<ApplyResult>(content, ['ok', 'rc']);
+                // Found valid result JSON - update is complete
+                this.stopLogPolling();
+                this.handleUpdateComplete(result);
+                return;
+            } catch {
+                // No complete JSON yet, update still running
+            }
+
+        } catch (err) {
+            console.error('Error checking update status:', err);
+        }
+    }
+
+    private handleUpdateComplete(result: ApplyResult): void {
+        this._isProcessing = false;
+
+        if (result.ok) {
+            const ledMsg = result.led_status === 'success' ? ' (LED: Green)' : '';
+            vscode.window.showInformationMessage(`System update completed successfully!${ledMsg}`);
+            this._hasCheckedUpdates = false;
+            this._availableUpdates = [];
+            this._completedPackages.clear();
+            this._currentPackage = '';
+            this._updateStatus = '';
+            this._updateDetails = '';
+        } else {
+            this._errorState = this.detectBrokenPackages(result.rc, result.error || '');
+            if (this._errorState === 'broken_packages') {
+                this._updateStatus = 'Package installation failed. Use recovery options below to fix.';
+            } else {
+                this._updateStatus = result.error || 'Update failed';
+            }
+            const ledMsg = result.led_status === 'error' ? ' (LED: Red)' : '';
+            vscode.window.showErrorMessage(`System update failed${ledMsg}. ${this._updateStatus}`);
+            this._updateDetails = '';
+        }
+
+        // Clean up log file
+        try {
+            fs.unlinkSync(this._updateLogPath);
+        } catch {}
+
+        this.updateWebview();
     }
 
 	private parseAptOutput(text: string): void {
@@ -830,62 +916,6 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		return null;
 	}
 
-	private handleUpdateExit(code: number | null, output: string): void {
-		this._isProcessing = false;
-
-		// Parse JSON result from output (handles log lines mixed with JSON)
-		let result: ApplyResult | null = null;
-		try {
-			result = extractJson<ApplyResult>(output, ['ok', 'rc']);
-		} catch (e) {
-			// No valid JSON found
-		}
-
-		if (result?.ok) {
-			const ledMsg = result.led_status === 'success' ? ' (LED: Green)' : '';
-			vscode.window.showInformationMessage(
-				`System update completed successfully!${ledMsg}`
-			);
-			this._hasCheckedUpdates = false;
-			this._availableUpdates = [];
-			this._completedPackages.clear();
-			this._currentPackage = '';
-			this._updateStatus = '';
-			this._updateDetails = '';
-		} else if (result?.ok === false) {
-			// Detect broken package states using centralized method
-			const errorOutput = result.error || output;
-			this._errorState = this.detectBrokenPackages(code, errorOutput);
-
-			if (this._errorState === 'broken_packages') {
-				this._updateStatus = 'Package installation failed. Use recovery options below to fix.';
-			} else {
-				this._updateStatus = result.error || 'Update failed';
-			}
-
-			const ledMsg = result.led_status === 'error' ? ' (LED: Red)' : '';
-			vscode.window.showErrorMessage(
-				`System update failed${ledMsg}. ${this._updateStatus}`
-			);
-			this._updateDetails = '';
-		} else if (code === 0) {
-			vscode.window.showInformationMessage('System update completed successfully!');
-			this._hasCheckedUpdates = false;
-			this._availableUpdates = [];
-			this._updateStatus = '';
-			this._updateDetails = '';
-		} else {
-			// Handle unexpected failure (no JSON result but non-zero exit code)
-			this._errorState = this.detectBrokenPackages(code, output);
-			this._updateStatus = this._errorState === 'broken_packages'
-				? 'Package installation failed. Use recovery options below to fix.'
-				: 'Update failed unexpectedly';
-			vscode.window.showErrorMessage(`System update failed with code ${code}`);
-			this._updateDetails = '';
-		}
-
-		this.updateWebview();
-	}
 
 	private async configurePendingPackages(): Promise<void> {
 		this._isProcessing = true;

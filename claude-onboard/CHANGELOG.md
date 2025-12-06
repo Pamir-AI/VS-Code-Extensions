@@ -2,6 +2,16 @@
 
 All notable changes to the "device-manager" extension will be documented in this file.
 
+## [1.1.0] - 2025-12-05
+
+### Added
+- Platform version detection for backwards compatibility with older distiller-update versions
+- Robust JSON parsing to handle log output mixed with JSON responses
+
+### Fixed
+- System updates now survive code-server restarts using detached process execution
+- Update progress tracking via log file polling for reliable status updates
+
 ## [1.0.2] - 2025-10-27
 
 ### Fixed
