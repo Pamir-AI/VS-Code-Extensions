@@ -40,6 +40,65 @@ interface ApplyResult {
 	error?: string;
 }
 
+// Extract JSON object from mixed output (handles log lines before/after JSON)
+function extractJson<T>(output: string, requiredKeys: string[] = []): T {
+	const lines = output.split('\n');
+
+	for (let i = 0; i < lines.length; i++) {
+		const trimmed = lines[i].trim();
+
+		// Skip lines that don't start with '{'
+		if (!trimmed.startsWith('{')) {
+			continue;
+		}
+
+		// Collect lines starting from here, tracking brace depth
+		let depth = 0;
+		let jsonLines: string[] = [];
+
+		for (let j = i; j < lines.length; j++) {
+			const line = lines[j];
+			jsonLines.push(line);
+
+			for (const ch of line) {
+				if (ch === '{') depth++;
+				else if (ch === '}') depth--;
+			}
+
+			// Found complete JSON object
+			if (depth === 0) {
+				try {
+					const parsed = JSON.parse(jsonLines.join('\n'));
+					// Verify required keys if specified
+					if (requiredKeys.length === 0 || requiredKeys.every(k => k in parsed)) {
+						return parsed as T;
+					}
+				} catch {
+					// Invalid JSON, try next candidate
+				}
+				break;
+			}
+		}
+	}
+
+	throw new Error('No valid JSON found in output');
+}
+
+// Check if platform version requires --refresh flag for distiller-update
+function needsRefreshFlag(): boolean {
+	try {
+		const info = fs.readFileSync('/etc/distiller-platform-info', 'utf-8');
+		const match = info.match(/DISTILLER_PLATFORM_VERSION=(\d+)\.(\d+)\.(\d+)/);
+		if (!match) return true; // Default to old behavior if can't parse
+		const major = parseInt(match[1], 10);
+		// Version >= 2.0.0 doesn't need --refresh
+		return major < 2;
+	} catch {
+		// File doesn't exist or can't be read - assume old platform
+		return true;
+	}
+}
+
 class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private _trialActive: boolean = false;
@@ -502,8 +561,9 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 		this.updateWebview();
 
 		try {
-			const { stdout } = await execAsync('sudo distiller-update list --json --refresh');
-			const result: ListResponse = JSON.parse(stdout);
+			const refreshFlag = needsRefreshFlag() ? ' --refresh' : '';
+			const { stdout } = await execAsync(`sudo distiller-update list --json${refreshFlag}`);
+			const result: ListResponse = extractJson(stdout, ['has_updates', 'packages']);
 			
 			this._availableUpdates = result.packages;
 			this._hasCheckedUpdates = true;
@@ -554,13 +614,11 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
             this.updateWebview();
 
             // Spawn distiller-update directly for real-time progress
-            const proc = spawn('sudo', [
-                '-n',
-                '/usr/bin/distiller-update',
-                'apply',
-                '--json',
-                '--refresh'
-            ]);
+            const args = ['-n', '/usr/bin/distiller-update', 'apply', '--json'];
+            if (needsRefreshFlag()) {
+                args.push('--refresh');
+            }
+            const proc = spawn('sudo', args);
 
             let outputBuffer = '';
 
@@ -645,20 +703,12 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 	private handleUpdateExit(code: number | null, output: string): void {
 		this._isProcessing = false;
 
-		// Parse JSON result from last line
-		const lines = output.trim().split('\n');
+		// Parse JSON result from output (handles log lines mixed with JSON)
 		let result: ApplyResult | null = null;
-
-		// Find last valid JSON line (may be after APT output)
-		for (let i = lines.length - 1; i >= 0; i--) {
-			try {
-				if (lines[i].trim().startsWith('{')) {
-					result = JSON.parse(lines[i]) as ApplyResult;
-					break;
-				}
-			} catch (e) {
-				continue;
-			}
+		try {
+			result = extractJson<ApplyResult>(output, ['ok', 'rc']);
+		} catch (e) {
+			// No valid JSON found
 		}
 
 		if (result?.ok) {
