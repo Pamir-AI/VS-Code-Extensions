@@ -2,6 +2,13 @@
 
 All notable changes to the "session-manager" extension will be documented in this file.
 
+## [1.1.0] - 2025-12-05
+
+### Deprecated
+- Extension deprecated for Platform 2.0+ users
+- Shows deprecation notice with one-click uninstall option
+- Session management is no longer needed in Platform 2.0
+
 ## [1.0.1] - 2025-10-17
 
 ### Fixed

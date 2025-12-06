@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { HappyApiClient } from './api/client';
 import { HappyCliExecutor } from './cli/executor';
 import { SessionTreeProvider } from './tree/provider';
+import { DeprecationTreeProvider } from './deprecation/tree';
 
 let apiClient: HappyApiClient;
 let cliExecutor: HappyCliExecutor;
@@ -11,8 +13,52 @@ let statusBarItem: vscode.StatusBarItem;
 let refreshTimer: NodeJS.Timeout | undefined;
 let outputChannel: vscode.OutputChannel;
 
+function isNewPlatform(): boolean {
+  try {
+    const info = fs.readFileSync('/etc/distiller-platform-info', 'utf-8');
+    const match = info.match(/DISTILLER_PLATFORM_VERSION=(\d+)\.(\d+)\.(\d+)/);
+    if (!match) {
+      return false;
+    }
+    const major = parseInt(match[1], 10);
+    return major >= 2;
+  } catch {
+    return false;
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Happy Session Manager extension is now active');
+
+  // Check if running on new platform where this extension is deprecated
+  if (isNewPlatform()) {
+    // Register deprecation tree view
+    const deprecationProvider = new DeprecationTreeProvider();
+    vscode.window.createTreeView('happySessions', {
+      treeDataProvider: deprecationProvider,
+    });
+
+    // Register uninstall command
+    context.subscriptions.push(
+      vscode.commands.registerCommand('happySessions.uninstall', async () => {
+        await vscode.commands.executeCommand(
+          'workbench.extensions.uninstallExtension',
+          'pamir-ai.happy-session-manager'
+        );
+        vscode.window.showInformationMessage(
+          'Session Manager uninstalled. Reload window to complete removal.',
+          'Reload'
+        ).then(choice => {
+          if (choice === 'Reload') {
+            vscode.commands.executeCommand('workbench.action.reloadWindow');
+          }
+        });
+      })
+    );
+
+    // Don't activate anything else on the new platform
+    return;
+  }
 
   // Read configuration
   const config = vscode.workspace.getConfiguration('happySessions');
