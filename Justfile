@@ -8,6 +8,8 @@ setup:
 	cd session-manager && npm install
 	cd vscode-welcome && npm install
 	cd claude-onboard && npm install
+	cd distiller-ports && npm install
+	cd messaging-manager && npm install
 	@echo "✓ All dependencies installed"
 
 # Build all extensions
@@ -16,6 +18,8 @@ build: setup
 	@just build-session-manager
 	@just build-vscode-welcome
 	@just build-claude-onboard
+	@just build-distiller-ports
+	@just build-messaging-manager
 	@echo "✓ All extensions built"
 
 # Build individual extensions
@@ -37,15 +41,31 @@ build-claude-onboard:
 	cd claude-onboard && npx @vscode/vsce package
 	@echo "✓ claude-onboard built"
 
+build-distiller-ports:
+	@echo "Building distiller-ports..."
+	cd distiller-ports && npm run package
+	cd distiller-ports && npx @vscode/vsce package
+	@echo "✓ distiller-ports built"
+
+build-messaging-manager:
+	@echo "Building messaging-manager..."
+	cd messaging-manager && npm run package
+	cd messaging-manager && npx @vscode/vsce package
+	@echo "✓ messaging-manager built"
+
 # Clean all build artifacts and node_modules
 clean:
 	@echo "Cleaning build artifacts..."
 	rm -f session-manager/*.vsix
 	rm -f vscode-welcome/*.vsix
 	rm -f claude-onboard/*.vsix
+	rm -f distiller-ports/*.vsix
+	rm -f messaging-manager/*.vsix
 	cd session-manager && rm -rf node_modules dist out
 	cd vscode-welcome && rm -rf node_modules dist out
 	cd claude-onboard && rm -rf node_modules dist out
+	cd distiller-ports && rm -rf node_modules dist out
+	cd messaging-manager && rm -rf node_modules dist out
 	@echo "✓ Cleaned"
 
 # Publish all extensions to OpenVSX (requires OVSX_TOKEN env var)
@@ -58,6 +78,8 @@ publish: build
 	cd session-manager && npx ovsx publish *.vsix -p $$OVSX_TOKEN
 	cd vscode-welcome && npx ovsx publish *.vsix -p $$OVSX_TOKEN
 	cd claude-onboard && npx ovsx publish *.vsix -p $$OVSX_TOKEN
+	cd distiller-ports && npx ovsx publish *.vsix -p $$OVSX_TOKEN
+	cd messaging-manager && npx ovsx publish *.vsix -p $$OVSX_TOKEN
 	@echo "✓ All extensions published"
 
 # Publish individual extensions
@@ -70,14 +92,24 @@ publish-vscode-welcome: build-vscode-welcome
 publish-claude-onboard: build-claude-onboard
 	cd claude-onboard && npx ovsx publish *.vsix -p $$OVSX_TOKEN
 
+publish-distiller-ports: build-distiller-ports
+	cd distiller-ports && npx ovsx publish *.vsix -p $$OVSX_TOKEN
+
+publish-messaging-manager: build-messaging-manager
+	cd messaging-manager && npx ovsx publish *.vsix -p $$OVSX_TOKEN
+
 # Lint all extensions
 lint:
 	cd session-manager && npm run lint
 	cd vscode-welcome && npm run lint
 	cd claude-onboard && npm run lint
+	cd distiller-ports && npm run lint
+	cd messaging-manager && npm run lint
 
 # Type check all extensions
 check-types:
 	cd session-manager && npm run check-types
 	cd vscode-welcome && npm run check-types
 	cd claude-onboard && npm run check-types
+	cd distiller-ports && npm run check-types
+	cd messaging-manager && npm run check-types

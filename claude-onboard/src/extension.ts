@@ -63,8 +63,11 @@ function extractJson<T>(output: string, requiredKeys: string[] = []): T {
 			jsonLines.push(line);
 
 			for (const ch of line) {
-				if (ch === '{') depth++;
-				else if (ch === '}') depth--;
+				if (ch === '{') {
+					depth++;
+				} else if (ch === '}') {
+					depth--;
+				}
 			}
 
 			// Found complete JSON object
@@ -91,7 +94,9 @@ function needsRefreshFlag(): boolean {
 	try {
 		const info = fs.readFileSync('/etc/distiller-platform-info', 'utf-8');
 		const match = info.match(/DISTILLER_PLATFORM_VERSION=(\d+)\.(\d+)\.(\d+)/);
-		if (!match) return true; // Default to old behavior if can't parse
+		if (!match) {
+			return true; // Default to old behavior if can't parse
+		}
 		const major = parseInt(match[1], 10);
 		// Version >= 2.0.0 doesn't need --refresh
 		return major < 2;
