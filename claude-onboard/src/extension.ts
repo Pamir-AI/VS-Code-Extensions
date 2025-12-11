@@ -757,9 +757,9 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
                 fs.unlinkSync(this._updateLogPath);
             } catch {}
 
-            // Run update detached using setsid so it survives code-server restart
+            // Run update in separate systemd transient unit so it survives code-server restart
             const refreshFlag = needsRefreshFlag() ? ' --refresh' : '';
-            const cmd = `setsid sudo /usr/bin/distiller-update apply --json${refreshFlag} > ${this._updateLogPath} 2>&1 &`;
+            const cmd = `systemd-run --unit=distiller-update-apply sudo /usr/bin/distiller-update apply --json${refreshFlag} > ${this._updateLogPath} 2>&1`;
             await execAsync(cmd);
 
             vscode.window.showInformationMessage('System update started.');
