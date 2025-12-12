@@ -7,9 +7,26 @@ This page walks you through connecting Claude, Cursor, and OpenAI Codex to your 
 
 >💡 **Disclaimer**: You’re receiving an early beta version of the device. You will encounter bugs, and we are actively patching them. We’re a very small team (just 3 people), so if you can help by reporting bugs, sharing videos, etc., please reach out on Discord: https://discord.gg/NbJJFds7Rf or email us at founders@pamir.ai 
 
-## Change the Default Password
+## Distiller Watchdog ✨ **NEW**
 
-Click <a data-cmd="pamir.openPasswordConfig" href="#">here</a> to open /etc/claude-code-web-manager/default.json directly in VS Code. Update the password value, press save, and your changes will apply the next time you boot the device.
+Your device now includes a self-healing diagnostic tool. Access it at:
+`{your-device-name}.devices.pamir.ai/watchdog`
+
+**Features:**
+- **Help Me Debug**: Click this button to spin up a specialized agent that diagnoses and fixes issues automatically
+- **System Info**: View disk usage, broken packages, and other diagnostic data
+- **Quick Repairs**: Approve one-click fixes for common problems
+
+> 💡 For best results, try the debug agent first. If issues persist, reach out to us on Discord or email.
+
+## Securely access your device over the local network
+
+Visit {personal-device-name}.devices.pamir.ai/distiller/https or {device-ip displayed on screen}:3000/distiller/https/ to install and set up certificates.
+This lets you access the device securely over your own local network by entering the device-ip displayed on the screen. This only works on the local network.
+
+## Change Your Password
+
+You can change the default password from the login screen. Your password is securely hashed and stored locally on the device—never transmitted externally.
 
 ---
 
@@ -24,40 +41,9 @@ The device comes with a Claude account activated (lasts until we can’t afford 
 
 ---
 
-### OpenAI Codex Extension
-
-The device doesn’t include an OpenAI account, so you’ll need to sign in with your own.
-
-For extension or CLI theres a login known issue: [https://github.com/openai/codex/issues/2798](https://github.com/openai/codex/issues/2798)
-
-**Login via Distiller Web UI with port forwarding**
-1. Click on the Codex Icon ![Codex Icon](./images/codex-step1.png)
-2. Click **Sign in with ChatGPT**.
-3. Follow the pop-up window to login ![Login Popup](./images/codex-step3.png)
-4. You’ll land on a **“This site can’t be reached”** page after login. This is expected. ![Error Page 1](./images/codex-step4.png)
-5. Go back to your VS Code page, click **PORTS**, and you should see port **1455**. (If you don’t, click **Add Port**, enter **1455**, then press **Enter**.) ![Port Check](./images/codex-step5.png)
-6. Click the tiny copy icon to copy the **forwarded address**.  ![Copy Addr](./images/codex-step6.png)
-7. Return to the **“This site can’t be reached”** Codex login page. Replace http://localhost:1455/ with the copied **forwarded address**, hit **Enter**. It will redirects to http://localhost:1455/success/*, replace the same http://localhost:1455 part with the **forwarded address** again and hit Enter. 
-
-> ![Codex link 1](./images/codex-step7.png)
-> ![Codex link 2](./images/codex-step8.png)
-You should be good to go!
-
----
-
-### Cursor Agent
-
-Cursor Agent is optional; you can try it and tell us what you’d like automated:
-
-```bash
-cursor-agent
-```
-
----
-
 ## 2) ESP32 Tutorials
 
-To start with some fun ! 
+To start with something fun ! 
 Navigate to the sample project ![Sample Nav](./images/nav-project.png)
 
 once you are in the project window, 
@@ -80,76 +66,14 @@ Claude should generate code, install toolchains, and flash the ESP32-S3. It will
 
 ---
 
-## 3) SDK & Minimal Examples
+## 3) Built-in Claude Skills
 
-For full docs, see: `/opt/distiller-sdk/README.md`
+Your device comes with Claude Code skills pre-installed that can control hardware peripherals directly. Just ask Claude what skills are available and what it can do!
 
-### Environment Setup
-
-```bash
-# One-time per shell
-export PYTHONPATH="/opt/distiller-sdk:${PYTHONPATH}"
-export LD_LIBRARY_PATH="/opt/distiller-sdk/lib:${LD_LIBRARY_PATH}"
-source /opt/distiller-sdk/.venv/bin/activate
-```
-
-Or call Python directly:
-
-```bash
-/opt/distiller-sdk/.venv/bin/python
-```
-
-### E-ink (auto-scale + dither)
-
-```python
-from distiller_sdk.hardware.eink import Display, DisplayMode
-
-with Display() as d:
-    d.display_png_auto("/path/to/image.png", DisplayMode.FULL)
-```
-
-### Camera (capture to file)
-
-```python
-from distiller_sdk.hardware.camera import Camera
-
-cam = Camera()
-cam.capture_image("/tmp/photo.jpg")
-cam.close()
-```
-
-### Audio (record 3s, then play)
-
-```python
-from distiller_sdk.hardware.audio import Audio
-
-a = Audio()
-a.record("/tmp/out.wav", duration=3.0)
-a.stop_recording()
-a.play("/tmp/out.wav")
-a.close()
-```
-
-### Parakeet ASR (push-to-talk loop)
-
-```python
-from distiller_sdk.parakeet import Parakeet
-
-asr = Parakeet()
-try:
-    for text in asr.record_and_transcribe_ptt():
-        print(text)
-finally:
-    asr.cleanup()
-```
-
-### Piper TTS (stream to speakers)
-
-```python
-from distiller_sdk.piper import Piper
-
-Piper().speak_stream("Hello from Distiller!", volume=50)
-```
+Examples:
+- "What skills do you have?"
+- "Play a sound on the speaker"
+- "Update the e-ink display"
 
 ## 4) Network Settings
 visit http://YOUR_DEVICE_IP:8080/ to update any network related changes
