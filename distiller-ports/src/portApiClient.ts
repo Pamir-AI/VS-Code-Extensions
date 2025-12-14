@@ -1,13 +1,35 @@
 import axios, { AxiosInstance } from 'axios';
+import * as fs from 'fs';
 import { PortDiscoveryResponse, PortActionRequest } from './types';
+
+const INTERNAL_SECRET_PATH = '/etc/claude-code-web-manager/internal-secret';
 
 export class PortApiClient {
     private client: AxiosInstance;
+    private internalSecret: string | null = null;
 
     constructor(private baseUrl: string) {
-        this.client = axios.create({
+        this.loadInternalSecret();
+        this.client = this.createClient(baseUrl);
+    }
+
+    private loadInternalSecret(): void {
+        try {
+            this.internalSecret = fs.readFileSync(INTERNAL_SECRET_PATH, 'utf8').trim();
+        } catch {
+            console.warn('Could not read internal secret, requests may fail auth');
+        }
+    }
+
+    private createClient(baseUrl: string): AxiosInstance {
+        const headers: Record<string, string> = {};
+        if (this.internalSecret) {
+            headers['X-Internal-Secret'] = this.internalSecret;
+        }
+        return axios.create({
             baseURL: baseUrl,
             timeout: 5000,
+            headers,
         });
     }
 
@@ -56,9 +78,6 @@ export class PortApiClient {
      */
     updateBaseUrl(baseUrl: string): void {
         this.baseUrl = baseUrl;
-        this.client = axios.create({
-            baseURL: baseUrl,
-            timeout: 5000,
-        });
+        this.client = this.createClient(baseUrl);
     }
 }
