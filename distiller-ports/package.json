@@ -2,7 +2,7 @@
   "name": "distiller-ports",
   "displayName": "Distiller Port Manager",
   "description": "Monitor and manage development server ports with automatic discovery and proxying",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "pamir-ai",
   "icon": "icon.png",
   "license": "Apache-2.0",
