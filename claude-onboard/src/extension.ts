@@ -759,7 +759,9 @@ class WelcomeViewProvider implements vscode.WebviewViewProvider {
 
             // Run update in separate systemd transient unit so it survives code-server restart
             const refreshFlag = needsRefreshFlag() ? ' --refresh' : '';
-            const cmd = `systemd-run --unit=distiller-update-apply sudo /usr/bin/distiller-update apply --json${refreshFlag} > ${this._updateLogPath} 2>&1`;
+            const jobId = Date.now().toString();
+            const unit = `distiller-apply-${jobId}`;
+            const cmd = `sudo -n systemd-run --unit=${unit} --collect --property=StandardOutput=file:${this._updateLogPath} --property=StandardError=file:${this._updateLogPath} /usr/bin/distiller-update apply --json${refreshFlag}`;
             await execAsync(cmd);
 
             vscode.window.showInformationMessage('System update started.');
