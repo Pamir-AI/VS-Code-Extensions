@@ -2,7 +2,7 @@
 
 All notable changes to the "session-manager" extension will be documented in this file.
 
-## [1.1.0] - 2025-12-05
+## [1.1.0] - 2025-12-15
 
 ### Deprecated
 - Extension deprecated for Platform 2.0+ users

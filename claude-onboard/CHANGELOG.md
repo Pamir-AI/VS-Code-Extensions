@@ -2,7 +2,7 @@
 
 All notable changes to the "device-manager" extension will be documented in this file.
 
-## [1.1.0] - 2025-12-05
+## [1.1.0] - 2025-12-15
 
 ### Added
 - Platform version detection for backwards compatibility with older distiller-update versions
