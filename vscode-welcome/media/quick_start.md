@@ -19,10 +19,16 @@ Your device now includes a self-healing diagnostic tool. Access it at:
 
 > 💡 For best results, try the debug agent first. If issues persist, reach out to us on Discord or email.
 
-## Securely access your device over the local network
+## Secure Local Network Access (HTTPS)
 
-Visit {personal-device-name}.devices.pamir.ai/distiller/https or {device-ip displayed on screen}:3000/distiller/https/ to install and set up certificates.
-This lets you access the device securely over your own local network by entering the device-ip displayed on the screen. This only works on the local network.
+Access your device securely over your local network by installing a self-signed certificate.
+
+**Setup URL:**
+`{your-device-name}.devices.pamir.ai/distiller/https`
+or
+`{device-ip}:3000/distiller/https/`
+
+> Note: This feature only works on your local network using the device IP shown on screen.
 
 ## Change Your Password
 
